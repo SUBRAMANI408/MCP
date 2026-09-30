@@ -1,0 +1,202 @@
+const Tournament = require('../models/Tournament');
+const Fixture = require('../models/Fixture');
+const Team = require('../models/Team');
+const Notification = require('../models/Notification');
+const { generateRoundRobin, generateKnockout } = require('../utils/fixtureGenerator');
+const { successResponse, paginatedResponse } = require('../utils/apiResponse');
+
+exports.createTournament = async (req, res) => {
+  const { name, sport, associationId, registrationDeadline, startDate, endDate, format, maxTeams, description } = req.body;
+  const tournament = await Tournament.create({
+    name, sport, associationId,
+    organizerId: req.user._id,
+    registrationDeadline, startDate, endDate,
+    format: format || 'round_robin',
+    maxTeams: maxTeams || 16,
+    description,
+    status: 'draft',
+  });
+  successResponse(res, tournament, 'Tournament created', 201);
+};
+
+exports.getTournaments = async (req, res) => {
+  const { associationId, status, sport, page = 1, limit = 10 } = req.query;
+  const query = {};
+  if (associationId) query.associationId = associationId;
+  if (status) query.status = status;
+  if (sport) query.sport = sport;
+  const total = await Tournament.countDocuments(query);
+  const tournaments = await Tournament.find(query)
+    .populate('organizerId', 'name')
+    .populate('associationId', 'name')
+    .skip((page - 1) * limit).limit(Number(limit)).sort({ createdAt: -1 });
+  paginatedResponse(res, tournaments, { total, page: Number(page), pages: Math.ceil(total / limit) });
+};
+
+exports.getTournament = async (req, res) => {
+  const tournament = await Tournament.findById(req.params.id)
+    .populate('organizerId', 'name email')
+    .populate('associationId', 'name')
+    .populate('registeredTeams', 'name sport captainId matchesPlayed')
+    .populate('approvedBy', 'name');
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  successResponse(res, tournament);
+};
+
+exports.updateTournament = async (req, res) => {
+  const tournament = await Tournament.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  successResponse(res, tournament, 'Tournament updated');
+};
+
+exports.submitForApproval = async (req, res) => {
+  const tournament = await Tournament.findById(req.params.id);
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  if (tournament.organizerId.toString() !== req.user._id.toString()) {
+    return res.status(403).json({ success: false, message: 'Not authorized' });
+  }
+  tournament.status = 'pending_approval';
+  await tournament.save();
+  const io = req.app.get('io');
+  io.to(tournament.associationId.toString()).emit('tournament:statusChange', { status: 'pending_approval', tournamentId: tournament._id });
+  successResponse(res, tournament, 'Tournament submitted for approval');
+};
+
+exports.approveTournament = async (req, res) => {
+  const tournament = await Tournament.findByIdAndUpdate(
+    req.params.id,
+    { status: 'approved', approvedBy: req.user._id },
+    { new: true }
+  );
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  await Notification.create({
+    userId: tournament.organizerId,
+    type: 'tournament_approved',
+    message: `Tournament "${tournament.name}" has been approved!`,
+    refId: tournament._id,
+  });
+  const io = req.app.get('io');
+  io.to(tournament.organizerId.toString()).emit('notification:new', { type: 'tournament_approved' });
+  successResponse(res, tournament, 'Tournament approved');
+};
+
+exports.rejectTournament = async (req, res) => {
+  const { reason } = req.body;
+  const tournament = await Tournament.findByIdAndUpdate(
+    req.params.id,
+    { status: 'draft' },
+    { new: true }
+  );
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  await Notification.create({
+    userId: tournament.organizerId,
+    type: 'tournament_rejected',
+    message: `Tournament "${tournament.name}" was rejected. ${reason || ''}`,
+    refId: tournament._id,
+  });
+  successResponse(res, tournament, 'Tournament rejected');
+};
+
+exports.registerTeam = async (req, res) => {
+  const tournament = await Tournament.findById(req.params.id);
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  if (tournament.status !== 'approved') return res.status(400).json({ success: false, message: 'Tournament not open for registration' });
+  if (tournament.registeredTeams.length >= tournament.maxTeams) {
+    return res.status(400).json({ success: false, message: 'Tournament is full' });
+  }
+  const teamId = req.user.teamId;
+  if (!teamId) return res.status(400).json({ success: false, message: 'You are not in a team' });
+  if (tournament.registeredTeams.map(t => t.toString()).includes(teamId.toString())) {
+    return res.status(400).json({ success: false, message: 'Team already registered' });
+  }
+  tournament.registeredTeams.push(teamId);
+  await tournament.save();
+  successResponse(res, tournament, 'Team registered for tournament');
+};
+
+exports.unregisterTeam = async (req, res) => {
+  const tournament = await Tournament.findByIdAndUpdate(
+    req.params.id,
+    { $pull: { registeredTeams: req.user.teamId } },
+    { new: true }
+  );
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  successResponse(res, tournament, 'Team unregistered');
+};
+
+exports.generateFixtures = async (req, res) => {
+  const tournament = await Tournament.findById(req.params.id).populate('registeredTeams', '_id name');
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  if (tournament.registeredTeams.length < 2) {
+    return res.status(400).json({ success: false, message: 'Need at least 2 teams to generate fixtures' });
+  }
+  // Delete existing fixtures
+  await Fixture.deleteMany({ tournamentId: tournament._id });
+  let fixtureData;
+  if (tournament.format === 'knockout') {
+    fixtureData = generateKnockout(tournament.registeredTeams);
+  } else {
+    fixtureData = generateRoundRobin(tournament.registeredTeams);
+  }
+  const fixtures = await Fixture.insertMany(fixtureData.map(f => ({ ...f, tournamentId: tournament._id })));
+  successResponse(res, fixtures, 'Fixtures generated', 201);
+};
+
+exports.startTournament = async (req, res) => {
+  const tournament = await Tournament.findByIdAndUpdate(req.params.id, { status: 'ongoing' }, { new: true });
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  successResponse(res, tournament, 'Tournament started');
+};
+
+exports.completeTournament = async (req, res) => {
+  const tournament = await Tournament.findByIdAndUpdate(req.params.id, { status: 'completed' }, { new: true });
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+  successResponse(res, tournament, 'Tournament completed');
+};
+
+exports.getTournamentReports = async (req, res) => {
+  const { id } = req.params;
+  const [tournament, fixtures, totalTeams] = await Promise.all([
+    Tournament.findById(id).populate('registeredTeams', 'name matchesPlayed'),
+    Fixture.find({ tournamentId: id }).populate('teamA teamB', 'name'),
+    Tournament.findById(id).select('registeredTeams'),
+  ]);
+  const completedFixtures = fixtures.filter(f => f.status === 'completed').length;
+  const scheduledFixtures = fixtures.filter(f => f.status === 'scheduled').length;
+  successResponse(res, { tournament, fixtures, completedFixtures, scheduledFixtures, totalTeams: tournament?.registeredTeams?.length || 0 });
+};
+
+exports.getTournamentOrganizerDashboard = async (req, res) => {
+  const organizerId = req.user._id;
+
+  const tournaments = await Tournament.find({ organizerId }, '_id name status registeredTeams');
+  const tournamentIds = tournaments.map(t => t._id);
+
+  const [
+    totalTournaments, upcoming, ongoing, completed,
+    totalMatches, upcomingMatches, liveMatches, completedMatches
+  ] = await Promise.all([
+    Tournament.countDocuments({ organizerId }),
+    Tournament.countDocuments({ organizerId, status: 'approved' }),
+    Tournament.countDocuments({ organizerId, status: 'ongoing' }),
+    Tournament.countDocuments({ organizerId, status: 'completed' }),
+    Fixture.countDocuments({ tournamentId: { $in: tournamentIds } }),
+    Fixture.countDocuments({ tournamentId: { $in: tournamentIds }, status: 'scheduled' }),
+    Fixture.countDocuments({ tournamentId: { $in: tournamentIds }, status: 'live' }),
+    Fixture.countDocuments({ tournamentId: { $in: tournamentIds }, status: 'completed' })
+  ]);
+
+  const totalRegisteredTeams = tournaments.reduce((acc, t) => acc + (t.registeredTeams?.length || 0), 0);
+
+  successResponse(res, {
+    totalTournaments,
+    upcoming,
+    ongoing,
+    completed,
+    totalRegisteredTeams,
+    totalMatches,
+    upcomingMatches,
+    liveMatches,
+    completedMatches
+  });
+};

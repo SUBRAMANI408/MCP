@@ -1,0 +1,258 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Outfit:wght@400;500;600;700;800;900&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --color-primary: #0ea5e9;
+  --color-sport: #f59e0b;
+  --color-accent: #a3e635;
+  --color-bg: #09090b;
+  --color-surface: #18181b;
+  --color-surface-2: #27272a;
+  --color-border: #27272a;
+  --color-text: #fafafa;
+  --color-text-muted: #a1a1aa;
+  --sidebar-width: 260px;
+  --header-height: 64px;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'Inter', system-ui, sans-serif;
+  background-color: var(--color-bg);
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(14, 165, 233, 0.15) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(245, 158, 11, 0.15) 0px, transparent 50%),
+    linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 30px 30px, 30px 30px;
+  background-position: 0 0, 0 0, -1px -1px, -1px -1px;
+  background-attachment: fixed;
+  color: var(--color-text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ─── Scrollbar ─────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: #09090b;
+}
+::-webkit-scrollbar-thumb {
+  background: #27272a;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3f3f46;
+}
+
+/* ─── Component Layer ───────────────────────────────────────────────────────── */
+@layer components {
+
+  /* Glassmorphism card */
+  .glass {
+    @apply bg-dark-900/70 backdrop-blur-2xl border border-dark-800/80 shadow-[0_8px_32px_rgba(0,0,0,0.5)];
+  }
+
+  /* Standard cards */
+  .card {
+    @apply bg-dark-900/80 backdrop-blur-lg border border-dark-800 rounded-2xl p-6 shadow-xl shadow-black/40 hover:border-primary-500/30 transition-colors duration-300;
+  }
+
+  .card-sm {
+    @apply bg-dark-900/80 backdrop-blur-lg border border-dark-800 rounded-xl p-4 shadow-lg hover:border-primary-500/30 transition-colors duration-300;
+  }
+
+  /* Gradient text */
+  .gradient-text {
+    @apply bg-gradient-to-r from-primary-400 via-sport-400 to-accent-400 bg-clip-text text-transparent;
+  }
+
+  /* ── Buttons ────────────────────────────────────────────────────────────── */
+  .btn-primary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-primary-600 to-primary-500 hover:from-primary-500 hover:to-primary-400 text-white font-bold rounded-xl transition-all duration-300 shadow-[0_0_15px_rgba(14,165,233,0.4)] hover:shadow-[0_0_25px_rgba(14,165,233,0.6)] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed uppercase tracking-wide text-sm;
+  }
+
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 bg-dark-800 hover:bg-dark-700 text-dark-50 font-bold rounded-xl transition-all duration-300 active:scale-95 border border-dark-700 hover:border-dark-600 hover:shadow-lg disabled:opacity-50 uppercase tracking-wide text-sm;
+  }
+
+  .btn-success {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-sport-600 to-sport-500 hover:from-sport-500 hover:to-sport-400 text-white font-bold rounded-xl transition-all duration-300 shadow-[0_0_15px_rgba(245,158,11,0.4)] hover:shadow-[0_0_25px_rgba(245,158,11,0.6)] active:scale-95 uppercase tracking-wide text-sm;
+  }
+
+  .btn-danger {
+    @apply inline-flex items-center gap-2 px-5 py-2.5 bg-gradient-to-r from-red-700 to-red-600 hover:from-red-600 hover:to-red-500 text-white font-bold rounded-xl transition-all duration-300 shadow-[0_0_15px_rgba(220,38,38,0.4)] hover:shadow-[0_0_25px_rgba(220,38,38,0.6)] active:scale-95 uppercase tracking-wide text-sm;
+  }
+
+  .btn-ghost {
+    @apply inline-flex items-center gap-2 px-3 py-2 text-dark-100 hover:text-white hover:bg-dark-800 font-bold rounded-lg transition-all duration-200 active:scale-95;
+  }
+
+  /* ── Form inputs ────────────────────────────────────────────────────────── */
+  .input {
+    @apply w-full bg-dark-950 border border-dark-800 rounded-xl px-4 py-3 text-dark-50 placeholder-dark-100/30 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500 transition-all duration-300 shadow-inner;
+  }
+
+  .label {
+    @apply block text-xs font-bold text-dark-100 uppercase tracking-wider mb-2;
+  }
+
+  /* ── Badges / Status indicators ─────────────────────────────────────────── */
+  .badge {
+    @apply inline-flex items-center px-2.5 py-1 rounded-md text-xs font-bold tracking-wider uppercase shadow-sm border;
+  }
+
+  .badge-success {
+    @apply badge bg-accent-500/10 text-accent-400 border-accent-500/20 shadow-[0_0_10px_rgba(163,230,53,0.1)];
+  }
+
+  .badge-pending {
+    @apply badge bg-sport-500/10 text-sport-400 border-sport-500/20 shadow-[0_0_10px_rgba(245,158,11,0.1)];
+  }
+
+  .badge-danger {
+    @apply badge bg-red-500/10 text-red-400 border-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.1)];
+  }
+
+  .badge-info {
+    @apply badge bg-primary-500/10 text-primary-400 border-primary-500/20 shadow-[0_0_10px_rgba(14,165,233,0.1)];
+  }
+
+  .badge-live {
+    @apply badge bg-red-600 text-white border-red-500 animate-pulse-fast shadow-[0_0_15px_rgba(220,38,38,0.6)];
+  }
+
+  /* ── Tables ─────────────────────────────────────────────────────────────── */
+  .table-container {
+    @apply w-full overflow-x-auto rounded-xl border border-dark-800 bg-dark-900/50 backdrop-blur-sm;
+  }
+
+  .table {
+    @apply w-full text-sm;
+  }
+
+  .table thead {
+    @apply bg-dark-950/80 border-b border-dark-800;
+  }
+
+  .table th {
+    @apply px-5 py-4 text-left text-xs font-bold text-dark-100 uppercase tracking-widest;
+  }
+
+  .table td {
+    @apply px-5 py-4 text-dark-50 border-b border-dark-800/50;
+  }
+
+  .table tbody tr {
+    @apply hover:bg-dark-800/40 transition-colors duration-200;
+  }
+
+  /* ── Sidebar ────────────────────────────────────────────────────────────── */
+  .sidebar-link {
+    @apply flex items-center gap-3 px-4 py-3 rounded-xl text-dark-100 hover:text-white hover:bg-dark-800 transition-all duration-300 font-bold text-sm cursor-pointer tracking-wide;
+  }
+
+  .sidebar-link.active {
+    @apply text-white bg-gradient-to-r from-primary-900/40 to-transparent border-l-4 border-primary-500 shadow-[inset_20px_0_20px_-20px_rgba(14,165,233,0.3)];
+  }
+
+  /* ── Stat card ──────────────────────────────────────────────────────────── */
+  .stat-card {
+    @apply card flex items-center gap-5 relative overflow-hidden hover:-translate-y-1 transition-all duration-300;
+  }
+
+  /* ── Typography helpers ─────────────────────────────────────────────────── */
+  .section-title {
+    @apply text-2xl font-black text-white font-display tracking-tight uppercase;
+  }
+
+  .page-header {
+    @apply flex items-center justify-between mb-8 pb-4 border-b border-dark-800/50;
+  }
+}
+
+/* ─── Animation utilities ───────────────────────────────────────────────────── */
+@layer utilities {
+  .animate-fade-in {
+    animation: fadeIn 0.3s ease-in-out both;
+  }
+
+  .animate-slide-in {
+    animation: slideIn 0.3s ease-out both;
+  }
+
+  .animate-pulse-soft {
+    animation: pulseSoft 2s ease-in-out infinite;
+  }
+  
+  .animate-pulse-fast {
+    animation: pulseFast 1s ease-in-out infinite;
+  }
+  
+  .animate-float {
+    animation: float 6s ease-in-out infinite;
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes pulseSoft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+@keyframes pulseFast {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.9;
+    transform: scale(0.98);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-10px);
+  }
+}
+
