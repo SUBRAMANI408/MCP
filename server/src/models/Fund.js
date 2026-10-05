@@ -12,6 +12,7 @@ const fundSchema = new mongoose.Schema({
   description: { type: String, required: true },
   relatedTeamId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
   receiptId: { type: mongoose.Schema.Types.ObjectId, ref: 'Receipt', default: null },
+  receiptStatus: { type: String, enum: ['generated', 'pending', 'failed'], default: 'generated' },
   status: { type: String, enum: ['pending', 'approved', 'rejected', 'completed'], default: 'completed' },
   requestedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },

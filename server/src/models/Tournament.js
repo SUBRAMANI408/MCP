@@ -11,6 +11,7 @@ const tournamentSchema = new mongoose.Schema({
     default: 'draft'
   },
   format: { type: String, enum: ['round_robin', 'knockout', 'group_knockout'], default: 'round_robin' },
+  registrationStartDate: { type: Date },
   registrationDeadline: { type: Date },
   startDate: { type: Date },
   endDate: { type: Date },
@@ -18,7 +19,11 @@ const tournamentSchema = new mongoose.Schema({
   approvedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   maxTeams: { type: Number, default: 16 },
   description: { type: String },
+  registrationFee: { type: Number, default: 0 },
+  rules: { type: String },
+  prizeInfo: { type: String },
   banner: { type: String },
+  contactInfo: { type: String }
 }, { timestamps: true });
 
 module.exports = mongoose.model('Tournament', tournamentSchema);

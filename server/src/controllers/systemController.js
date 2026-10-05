@@ -84,40 +84,96 @@ exports.resolveFeedback = async (req, res) => {
   successResponse(res, feedback, 'Feedback marked as resolved');
 };
 
+const RefreshToken = require('../models/RefreshToken');
+const LoginAttempt = require('../models/LoginAttempt');
+
 exports.forceLogoutUser = async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-  // Soft force logout: suspend the user temporarily or trigger token invalidation by updating user status
-  const originalStatus = user.status;
-  user.status = 'suspended';
-  await user.save();
+  // Revoke all active refresh tokens for this user
+  await RefreshToken.updateMany(
+    { userId: user._id, revokedAt: null },
+    { revokedAt: new Date() }
+  );
 
-  // Audit log
+  // Notify connected sockets to force disconnect
+  const io = req.app.get('io');
+  if (io) {
+    io.to(user._id.toString()).emit('auth:forced_logout', { message: 'Your session was terminated by an administrator.' });
+  }
+
   await logAudit({
     action: 'force_logout',
     performedBy: req.user._id,
     targetUser: user._id,
     targetModel: 'User',
     targetId: user._id,
-    details: { originalStatus }
+    details: { reason: 'Admin revoked sessions' }
   });
 
-  // Re-activate immediately so they can re-login, but their previous token would fail if status mismatch
-  // Or keep it suspended for security. Let's make it simple: suspend them, admin can reactivate.
-  successResponse(res, null, 'User session terminated. Account suspended.');
+  successResponse(res, null, 'User sessions revoked. User will be required to log in again.');
+};
+
+exports.lockUser = async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  user.status = 'suspended';
+  await user.save();
+
+  // Also revoke active sessions
+  await RefreshToken.updateMany(
+    { userId: user._id, revokedAt: null },
+    { revokedAt: new Date() }
+  );
+
+  await logAudit({
+    action: 'user_locked',
+    performedBy: req.user._id,
+    targetUser: user._id,
+    targetModel: 'User',
+    targetId: user._id,
+    details: { action: 'Account locked / suspended' }
+  });
+
+  successResponse(res, user.toJSON(), 'User account locked and suspended');
+};
+
+exports.unlockUser = async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+  user.status = 'active';
+  user.failedLoginAttempts = 0;
+  user.lockUntil = null;
+  await user.save();
+
+  await logAudit({
+    action: 'user_unlocked',
+    performedBy: req.user._id,
+    targetUser: user._id,
+    targetModel: 'User',
+    targetId: user._id,
+    details: { action: 'Account unlocked and re-activated' }
+  });
+
+  successResponse(res, user.toJSON(), 'User account unlocked and re-activated');
 };
 
 exports.getLoginAttempts = async (req, res) => {
-  const { page = 1, limit = 20 } = req.query;
+  const { page = 1, limit = 20, email, success } = req.query;
   
-  const query = { action: 'login_failed' };
-  const total = await AuditLog.countDocuments(query);
-  const logs = await AuditLog.find(query)
-    .populate('targetUser', 'name email role')
+  const query = {};
+  if (email) query.email = { $regex: email, $options: 'i' };
+  if (success !== undefined) query.success = success === 'true';
+
+  const total = await LoginAttempt.countDocuments(query);
+  const attempts = await LoginAttempt.find(query)
+    .populate('userId', 'name email role')
     .skip((page - 1) * limit)
     .limit(Number(limit))
     .sort({ createdAt: -1 });
 
-  paginatedResponse(res, logs, { total, page: Number(page), pages: Math.ceil(total / limit) });
+  paginatedResponse(res, attempts, { total, page: Number(page), pages: Math.ceil(total / limit) });
 };

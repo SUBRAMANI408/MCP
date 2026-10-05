@@ -10,6 +10,7 @@ const Fund = require('../models/Fund');
 const Match = require('../models/Match');
 const FriendlyMatch = require('../models/FriendlyMatch');
 const { successResponse, paginatedResponse } = require('../utils/apiResponse');
+const { logAudit } = require('../utils/auditLogger');
 
 exports.getAssociation = async (req, res) => {
   const association = await Association.findById(req.params.id)
@@ -231,12 +232,13 @@ exports.getAssociationMembers = async (req, res) => {
 };
 
 exports.approveTeam = async (req, res) => {
-  const team = await Team.findByIdAndUpdate(req.params.teamId, { status: 'approved' }, { new: true });
+  const team = await Team.findByIdAndUpdate(req.params.teamId, { status: 'approved', rejectionReason: null }, { new: true });
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
   
+  // Rule: Add ONLY the captain to the association group; players never join it
   await Group.findOneAndUpdate(
     { type: 'association', refId: team.associationId },
-    { $addToSet: { members: { $each: [team.captainId, ...team.players] } } }
+    { $addToSet: { members: team.captainId } }
   );
 
   const existingGroup = await Group.findOne({ type: 'team', refId: team._id });
@@ -247,6 +249,14 @@ exports.approveTeam = async (req, res) => {
     });
   }
 
+  await logAudit({
+    action: 'team_approved',
+    performedBy: req.user._id,
+    targetModel: 'Team',
+    targetId: team._id,
+    details: { teamName: team.name }
+  });
+
   await Notification.create({
     userId: team.captainId,
     type: 'team_approved',
@@ -256,7 +266,9 @@ exports.approveTeam = async (req, res) => {
   });
 
   const io = req.app.get('io');
-  io.to(team.captainId.toString()).emit('notification:new', { type: 'team_approved', teamId: team._id });
+  if (io) {
+    io.to(team.captainId.toString()).emit('notification:new', { type: 'team_approved', teamId: team._id });
+  }
   successResponse(res, team, 'Team approved');
 };
 
@@ -269,6 +281,14 @@ exports.rejectTeam = async (req, res) => {
   );
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
 
+  await logAudit({
+    action: 'team_rejected',
+    performedBy: req.user._id,
+    targetModel: 'Team',
+    targetId: team._id,
+    details: { reason }
+  });
+
   await Notification.create({
     userId: team.captainId,
     type: 'team_rejected',
@@ -278,19 +298,104 @@ exports.rejectTeam = async (req, res) => {
   });
 
   const io = req.app.get('io');
-  io.to(team.captainId.toString()).emit('notification:new', { type: 'team_rejected', teamId: team._id });
+  if (io) {
+    io.to(team.captainId.toString()).emit('notification:new', { type: 'team_rejected', teamId: team._id });
+  }
   successResponse(res, team, 'Team rejected');
 };
 
-exports.suspendTeam = async (req, res) => {
-  const team = await Team.findByIdAndUpdate(req.params.teamId, { status: 'rejected', rejectionReason: 'Suspended by Association Head' }, { new: true });
+exports.requestCorrections = async (req, res) => {
+  const { reason } = req.body;
+  const team = await Team.findByIdAndUpdate(
+    req.params.teamId,
+    { status: 'needs_correction', rejectionReason: reason || 'Corrections requested by Association Head' },
+    { new: true }
+  );
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+
+  await logAudit({
+    action: 'team_corrections_requested',
+    performedBy: req.user._id,
+    targetModel: 'Team',
+    targetId: team._id,
+    details: { reason }
+  });
+
+  await Notification.create({
+    userId: team.captainId,
+    type: 'general',
+    message: `Corrections requested for team "${team.name}": ${reason || 'Please review and resubmit'}`,
+    refId: team._id,
+    refModel: 'Team',
+  });
+
+  const io = req.app.get('io');
+  if (io) {
+    io.to(team.captainId.toString()).emit('notification:new', { type: 'team_corrections', teamId: team._id, reason });
+  }
+  successResponse(res, team, 'Corrections requested from team captain');
+};
+
+exports.suspendTeam = async (req, res) => {
+  const { reason } = req.body;
+  const team = await Team.findByIdAndUpdate(
+    req.params.teamId,
+    { status: 'suspended', rejectionReason: reason || 'Suspended by Association Head' },
+    { new: true }
+  );
+  if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+
+  // Remove captain from association group during suspension
+  await Group.findOneAndUpdate(
+    { type: 'association', refId: team.associationId },
+    { $pull: { members: team.captainId } }
+  );
+
+  await logAudit({
+    action: 'team_suspended',
+    performedBy: req.user._id,
+    targetModel: 'Team',
+    targetId: team._id,
+    details: { reason }
+  });
+
+  await Notification.create({
+    userId: team.captainId,
+    type: 'general',
+    message: `Your team "${team.name}" has been suspended. Reason: ${reason || 'Suspended by Association Head'}`,
+    refId: team._id,
+    refModel: 'Team',
+  });
+
+  const io = req.app.get('io');
+  if (io) {
+    io.to(team.captainId.toString()).emit('notification:new', { type: 'team_suspended', teamId: team._id, reason });
+  }
   successResponse(res, team, 'Team suspended');
 };
 
 exports.reactivateTeam = async (req, res) => {
-  const team = await Team.findByIdAndUpdate(req.params.teamId, { status: 'approved' }, { new: true });
+  const team = await Team.findByIdAndUpdate(
+    req.params.teamId,
+    { status: 'approved', rejectionReason: null },
+    { new: true }
+  );
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+
+  // Re-add captain to association group
+  await Group.findOneAndUpdate(
+    { type: 'association', refId: team.associationId },
+    { $addToSet: { members: team.captainId } }
+  );
+
+  await logAudit({
+    action: 'team_reactivated',
+    performedBy: req.user._id,
+    targetModel: 'Team',
+    targetId: team._id,
+    details: { teamName: team.name }
+  });
+
   successResponse(res, team, 'Team reactivated');
 };
 

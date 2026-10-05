@@ -1,7 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const { body } = require('express-validator');
-const { login, register, forgotPassword, resetPassword, getMe, changePassword, updateProfile } = require('../controllers/authController');
+const {
+  login,
+  register,
+  forgotPassword,
+  resetPassword,
+  getMe,
+  changePassword,
+  updateProfile,
+  refreshToken,
+  logout,
+  logoutAll
+} = require('../controllers/authController');
 const { authenticate } = require('../middleware/auth');
 const validate = require('../middleware/validate');
 
@@ -14,8 +25,14 @@ router.post('/register', [
   body('name').notEmpty().trim(),
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 6 }),
-  body('role').isIn(['association_head', 'tournament_organizer', 'captain', 'vice_captain', 'ground_officer', 'funds_officer', 'player']),
 ], validate, register);
+
+router.post('/refresh', [
+  body('refreshToken').notEmpty().withMessage('Refresh token required'),
+], validate, refreshToken);
+
+router.post('/logout', logout);
+router.post('/logout-all', authenticate, logoutAll);
 
 router.post('/forgot-password', [
   body('email').isEmail().normalizeEmail(),

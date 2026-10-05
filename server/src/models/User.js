@@ -19,6 +19,8 @@ const userSchema = new mongoose.Schema({
   resetPasswordExpires: Date,
   status: { type: String, enum: ['active', 'inactive', 'suspended', 'pending'], default: 'active' },
   lastLogin: { type: Date, default: null },
+  failedLoginAttempts: { type: Number, default: 0 },
+  lockUntil: { type: Date, default: null },
   forcePasswordChange: { type: Boolean, default: false },
   tempOrganizer: {
     isTemp: { type: Boolean, default: false },

@@ -73,7 +73,7 @@ export default function FinancialReports() {
         head: [['Date', 'Type', 'Category', 'Description', 'Amount', 'Status']],
         body: transactions.map(t => [
           new Date(t.date || t.createdAt).toLocaleDateString(),
-          t.transactionType === 'income' ? '↑ Income' : '↓ Expense',
+          t.type === 'income' ? '↑ Income' : '↓ Expense',
           t.category,
           (t.description || '').slice(0, 40),
           `₹ ${Number(t.amount || 0).toLocaleString()}`,
@@ -120,7 +120,7 @@ export default function FinancialReports() {
         ['Date', 'Type', 'Category', 'Description', 'Amount', 'Status', 'Collected By'],
         ...transactions.map(t => [
           new Date(t.date || t.createdAt).toLocaleDateString(),
-          t.transactionType,
+          t.type,
           t.category,
           t.description || '',
           Number(t.amount || 0),
@@ -144,8 +144,8 @@ export default function FinancialReports() {
     } finally { setExporting(false); }
   };
 
-  const incomeTransactions = transactions.filter(t => t.transactionType === 'income');
-  const expenseTransactions = transactions.filter(t => t.transactionType === 'expense');
+  const incomeTransactions = transactions.filter(t => t.type === 'income');
+  const expenseTransactions = transactions.filter(t => t.type === 'expense');
   const totalIncome = incomeTransactions.reduce((s, t) => s + Number(t.amount || 0), 0);
   const totalExpenses = expenseTransactions.reduce((s, t) => s + Number(t.amount || 0), 0);
 
@@ -287,13 +287,13 @@ export default function FinancialReports() {
                 <tr key={t._id}>
                   <td className="text-xs">{new Date(t.date || t.createdAt).toLocaleDateString()}</td>
                   <td>
-                    <span className={`badge text-xs capitalize ${t.transactionType === 'income' ? 'badge-success' : 'badge-danger'}`}>
-                      {t.transactionType === 'income' ? '↑' : '↓'} {t.transactionType}
+                    <span className={`badge text-xs capitalize ${t.type === 'income' ? 'badge-success' : 'badge-danger'}`}>
+                      {t.type === 'income' ? '↑' : '↓'} {t.type}
                     </span>
                   </td>
                   <td className="text-xs capitalize">{t.category?.replace(/_/g, ' ')}</td>
                   <td className="text-xs text-dark-100/70 max-w-48 truncate">{t.description}</td>
-                  <td className={`font-mono font-medium ${t.transactionType === 'income' ? 'text-green-400' : 'text-red-400'}`}>
+                  <td className={`font-mono font-medium ${t.type === 'income' ? 'text-green-400' : 'text-red-400'}`}>
                     ₹ {Number(t.amount || 0).toLocaleString()}
                   </td>
                   <td>

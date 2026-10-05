@@ -16,6 +16,7 @@ const {
   toggleUserStatus,
   resetUserPassword,
   getAuditLogs,
+  exportAuditLogs,
   getDashboardStats,
   sendAdminNotification
 } = require('../controllers/adminController');
@@ -28,6 +29,8 @@ const {
   replyToFeedback,
   resolveFeedback,
   forceLogoutUser,
+  lockUser,
+  unlockUser,
   getLoginAttempts
 } = require('../controllers/systemController');
 
@@ -67,6 +70,7 @@ router.post('/notifications/send', sendAdminNotification);
 router.get('/analytics', getAnalytics);
 
 // Audit
+router.get('/audit-logs/export', exportAuditLogs);
 router.get('/audit-logs', getAuditLogs);
 
 // System config
@@ -80,6 +84,8 @@ router.patch('/feedback/:id/resolve', resolveFeedback);
 
 // Security
 router.post('/users/:id/force-logout', forceLogoutUser);
+router.post('/users/:id/lock', lockUser);
+router.post('/users/:id/unlock', unlockUser);
 router.get('/security/login-attempts', getLoginAttempts);
 
 module.exports = router;

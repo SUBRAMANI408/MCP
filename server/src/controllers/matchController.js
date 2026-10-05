@@ -53,6 +53,7 @@ exports.startMatch = async (req, res) => {
   match.status = 'live';
   match.startedAt = new Date();
   match.scorerId = req.user._id;
+  match.scorerLockedAt = new Date();
   await match.save();
   const io = req.app.get('io');
   io.emit('match:update', { matchId: match._id, status: 'live', scoreSummary: match.scoreSummary });
@@ -101,10 +102,13 @@ exports.completeMatch = async (req, res) => {
     { $inc: { matchesPlayed: 1 } }
   );
   // Update fixture/friendly match status
-  if (match.type === 'tournament') {
-    await Fixture.findByIdAndUpdate(match.refId, { status: 'completed', matchId: match._id });
-  } else {
-    await FriendlyMatch.findByIdAndUpdate(match.refId, { status: 'accepted' });
+  const fixtureId = match.fixtureId || (match.type === 'tournament' ? match.refId : null);
+  const friendlyMatchId = match.friendlyMatchId || (match.type === 'friendly' ? match.refId : null);
+
+  if (fixtureId) {
+    await Fixture.findByIdAndUpdate(fixtureId, { status: 'completed', matchId: match._id });
+  } else if (friendlyMatchId) {
+    await FriendlyMatch.findByIdAndUpdate(friendlyMatchId, { status: 'completed', matchId: match._id });
   }
   const io = req.app.get('io');
   io.to(`match:${match._id}`).emit('match:update', { matchId: match._id, status: 'completed', scoreSummary: match.scoreSummary });

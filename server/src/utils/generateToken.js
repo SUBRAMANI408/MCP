@@ -15,4 +15,18 @@ const generateResetToken = () => {
   return { token, hashed };
 };
 
-module.exports = { generateAccessToken, generateResetToken };
+const generateRefreshToken = async (userId, ip = '', userAgent = '') => {
+  const RefreshToken = require('../models/RefreshToken');
+  const token = crypto.randomBytes(40).toString('hex');
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 30 days
+  await RefreshToken.create({
+    token,
+    userId,
+    ip,
+    userAgent,
+    expiresAt,
+  });
+  return token;
+};
+
+module.exports = { generateAccessToken, generateResetToken, generateRefreshToken };

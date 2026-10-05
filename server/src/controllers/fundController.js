@@ -23,24 +23,81 @@ exports.collectIncome = async (req, res) => {
     issuedTo: issuedTo || 'Payee',
     amount, date: new Date(), description,
   };
-  const pdfBuffer = await generateReceiptPDF(receiptData);
-  // Upload to Cloudinary
-  const uploadResult = await new Promise((resolve, reject) => {
-    cloudinary.uploader.upload_stream(
-      { resource_type: 'raw', folder: 'receipts', public_id: receiptData.receiptNumber, format: 'pdf' },
-      (error, result) => error ? reject(error) : resolve(result)
-    ).end(pdfBuffer);
-  });
-  const receipt = await Receipt.create({
-    fundId: fund._id,
-    receiptNumber: receiptData.receiptNumber,
-    issuedTo: receiptData.issuedTo,
-    amount, date: receiptData.date, description,
-    pdfUrl: uploadResult.secure_url,
-  });
-  fund.receiptId = receipt._id;
-  await fund.save();
-  successResponse(res, { fund, receipt }, 'Income recorded and receipt generated', 201);
+  
+  try {
+    const pdfBuffer = await generateReceiptPDF(receiptData);
+    // Upload to Cloudinary
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { resource_type: 'raw', folder: 'receipts', public_id: receiptData.receiptNumber, format: 'pdf' },
+        (error, result) => error ? reject(error) : resolve(result)
+      ).end(pdfBuffer);
+    });
+    
+    const receipt = await Receipt.create({
+      fundId: fund._id,
+      receiptNumber: receiptData.receiptNumber,
+      issuedTo: receiptData.issuedTo,
+      amount, date: receiptData.date, description,
+      pdfUrl: uploadResult.secure_url,
+    });
+    fund.receiptId = receipt._id;
+    fund.receiptStatus = 'generated';
+    await fund.save();
+    successResponse(res, { fund, receipt }, 'Income recorded and receipt generated', 201);
+  } catch (error) {
+    console.error('Receipt generation or upload failed:', error);
+    fund.receiptStatus = 'pending';
+    await fund.save();
+    return res.status(201).json({
+      success: true,
+      message: 'Receipt generation failed and is queued for retry.',
+      data: { fund },
+      warning: 'Receipt generation failed and is queued for retry.'
+    });
+  }
+};
+
+exports.retryReceipt = async (req, res) => {
+  const fund = await Fund.findById(req.params.id);
+  if (!fund) return res.status(404).json({ success: false, message: 'Fund record not found' });
+  if (fund.type !== 'income') return res.status(400).json({ success: false, message: 'Only income funds have receipts' });
+  if (fund.receiptId || fund.receiptStatus === 'generated') return res.status(400).json({ success: false, message: 'Receipt already generated' });
+
+  const receiptData = {
+    receiptNumber: generateReceiptNumber(),
+    issuedTo: req.body.issuedTo || 'Payee',
+    amount: fund.amount, 
+    date: fund.createdAt, 
+    description: fund.description,
+  };
+  
+  try {
+    const pdfBuffer = await generateReceiptPDF(receiptData);
+    const uploadResult = await new Promise((resolve, reject) => {
+      cloudinary.uploader.upload_stream(
+        { resource_type: 'raw', folder: 'receipts', public_id: receiptData.receiptNumber, format: 'pdf' },
+        (error, result) => error ? reject(error) : resolve(result)
+      ).end(pdfBuffer);
+    });
+    
+    const receipt = await Receipt.create({
+      fundId: fund._id,
+      receiptNumber: receiptData.receiptNumber,
+      issuedTo: receiptData.issuedTo,
+      amount: fund.amount, 
+      date: receiptData.date, 
+      description: fund.description,
+      pdfUrl: uploadResult.secure_url,
+    });
+    fund.receiptId = receipt._id;
+    fund.receiptStatus = 'generated';
+    await fund.save();
+    successResponse(res, { fund, receipt }, 'Receipt generated successfully');
+  } catch (error) {
+    console.error('Retry receipt generation failed:', error);
+    return res.status(500).json({ success: false, message: 'Receipt generation failed again' });
+  }
 };
 
 exports.createExpenseRequest = async (req, res) => {
@@ -70,7 +127,16 @@ exports.createExpenseRequest = async (req, res) => {
 exports.getFunds = async (req, res) => {
   const { associationId, type, category, status, page = 1, limit = 10 } = req.query;
   const query = {};
-  if (associationId) query.associationId = associationId;
+  
+  if (req.user && req.user.role !== 'admin') {
+    if (!req.user.associationId) {
+      return res.status(400).json({ success: false, message: 'User does not belong to an association' });
+    }
+    query.associationId = req.user.associationId;
+  } else if (associationId) {
+    query.associationId = associationId;
+  }
+
   if (type) query.type = type;
   if (category) query.category = category;
   if (status) query.status = status;
@@ -156,4 +222,46 @@ exports.getFinancialReports = async (req, res) => {
     ]),
   ]);
   successResponse(res, { byCategory, monthly });
+};
+
+exports.getDashboard = async (req, res) => {
+  const matchQuery = {};
+  if (req.user.role !== 'admin') {
+    if (!req.user.associationId) {
+      return res.status(400).json({ success: false, message: 'User does not belong to an association' });
+    }
+    matchQuery.associationId = require('mongoose').Types.ObjectId.createFromHexString(req.user.associationId.toString());
+  }
+
+  const [income, expenses, pending, recent] = await Promise.all([
+    Fund.aggregate([
+      { $match: { ...matchQuery, type: 'income', status: 'completed' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]),
+    Fund.aggregate([
+      { $match: { ...matchQuery, type: 'expense', status: { $in: ['approved', 'completed'] } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } }
+    ]),
+    Fund.aggregate([
+      { $match: { ...matchQuery, type: 'expense', status: 'pending' } },
+      { $group: { _id: null, total: { $sum: '$amount' }, count: { $sum: 1 } } }
+    ]),
+    Fund.find(matchQuery)
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate('requestedBy', 'name')
+      .populate('approvedBy', 'name')
+  ]);
+
+  const totalIncome = income[0]?.total || 0;
+  const totalExpenses = expenses[0]?.total || 0;
+
+  successResponse(res, {
+    totalIncome,
+    totalExpenses,
+    balance: totalIncome - totalExpenses,
+    pendingExpensesAmount: pending[0]?.total || 0,
+    pendingExpenseRequests: pending[0]?.count || 0,
+    recentTransactions: recent
+  });
 };

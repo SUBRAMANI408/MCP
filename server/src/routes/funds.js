@@ -12,6 +12,7 @@ const {
   approveExpense,
   rejectExpense,
   getFinancialReports,
+  getDashboard,
 } = require('../controllers/fundController');
 
 router.use(authenticate);
@@ -30,10 +31,12 @@ router.post('/expense-request', authorize('funds_officer', 'admin'), [
 ], validate, createExpenseRequest);
 
 router.get('/', getFunds);
+router.get('/dashboard', getDashboard);
 router.get('/:associationId/balance', authorize('admin', 'association_head', 'funds_officer'), getBalance);
 router.get('/:associationId/reports', authorize('admin', 'association_head', 'funds_officer'), getFinancialReports);
 router.get('/:id', getFund);
 router.put('/expenses/:id/approve', authorize('association_head', 'admin'), approveExpense);
 router.put('/expenses/:id/reject', authorize('association_head', 'admin'), rejectExpense);
+router.post('/:id/retry-receipt', authorize('funds_officer', 'admin'), require('../controllers/fundController').retryReceipt);
 
 module.exports = router;

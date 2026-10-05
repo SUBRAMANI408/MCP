@@ -39,14 +39,15 @@ export default function FundsDashboard() {
   const loadDashboardData = () => {
     setLoading(true);
     Promise.all([
-      fundApi.getBalance(user.associationId).catch(() => null),
-      fundApi.getReports(user.associationId).catch(() => null),
-      fundApi.getFunds({ associationId: user.associationId, limit: 8 }).catch(() => ({ data: { data: [] } }))
+      fundApi.getDashboard().catch(() => null),
+      fundApi.getReports(user.associationId).catch(() => null)
     ])
-      .then(([balRes, repRes, recentRes]) => {
-        if (balRes) setBalance(balRes.data.data);
+      .then(([dashRes, repRes]) => {
+        if (dashRes) {
+          setBalance(dashRes.data.data);
+          setRecent(dashRes.data.data.recentTransactions || []);
+        }
         if (repRes) setReports(repRes.data.data);
-        setRecent(recentRes.data.data || []);
       })
       .catch(() => toast.error('Failed to load dashboard financials'))
       .finally(() => setLoading(false));

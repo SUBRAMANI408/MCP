@@ -28,10 +28,10 @@ export default function AdminReports() {
     let endpoint = '';
     
     if (activeTab === 'users') endpoint = '/reports/admin/users';
-    else if (activeTab === 'associations') endpoint = '/reports/admin/associations'; // returns user breakdown
-    else if (activeTab === 'tournaments') endpoint = '/reports/admin/associations'; // stub routing or reports routing fallback
-    else if (activeTab === 'matches') endpoint = '/reports/admin/associations';
-    else if (activeTab === 'grounds') endpoint = '/reports/admin/associations';
+    else if (activeTab === 'associations') endpoint = '/reports/admin/associations';
+    else if (activeTab === 'tournaments') endpoint = '/reports/admin/tournaments';
+    else if (activeTab === 'matches') endpoint = '/reports/admin/matches';
+    else if (activeTab === 'grounds') endpoint = '/reports/admin/grounds';
     else if (activeTab === 'financial') endpoint = '/reports/admin/revenue';
 
     api.get(endpoint, {
@@ -178,19 +178,92 @@ export default function AdminReports() {
               </table>
             )}
 
-            {activeTab !== 'users' && activeTab !== 'financial' && (
+            {activeTab === 'associations' && (
               <table className="table">
                 <thead>
                   <tr>
-                    <th>Role / Metric Item</th>
-                    <th>Records count</th>
+                    <th>Association Name</th>
+                    <th>Head User</th>
+                    <th>Status</th>
+                    <th>Created At</th>
                   </tr>
                 </thead>
                 <tbody>
                   {data.map((row, idx) => (
                     <tr key={idx}>
-                      <td><span className="font-semibold text-white capitalize">{row._id?.replace(/_/g, ' ') || 'Default'}</span></td>
-                      <td>{row.count} records matching</td>
+                      <td><span className="font-semibold text-white">{row.name}</span></td>
+                      <td>{row.headUserId?.name || 'N/A'}</td>
+                      <td><span className="badge badge-success capitalize">{row.status}</span></td>
+                      <td>{new Date(row.createdAt).toLocaleDateString()}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {activeTab === 'tournaments' && (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Tournament</th>
+                    <th>Association</th>
+                    <th>Sport</th>
+                    <th>Dates</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((row, idx) => (
+                    <tr key={idx}>
+                      <td><span className="font-semibold text-white">{row.name}</span></td>
+                      <td>{row.associationId?.name || 'N/A'}</td>
+                      <td><span className="badge badge-info">{row.sport}</span></td>
+                      <td>{new Date(row.startDate).toLocaleDateString()} - {new Date(row.endDate).toLocaleDateString()}</td>
+                      <td><span className="badge badge-pending capitalize">{row.status}</span></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {activeTab === 'matches' && (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Match Teams</th>
+                    <th>Status</th>
+                    <th>Score</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((row, idx) => (
+                    <tr key={idx}>
+                      <td><span className="font-semibold text-white">{row.teamA?.name} vs {row.teamB?.name}</span></td>
+                      <td><span className="badge badge-success capitalize">{row.status}</span></td>
+                      <td>{row.scoreSummary || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+
+            {activeTab === 'grounds' && (
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>Ground Name</th>
+                    <th>Location</th>
+                    <th>Capacity</th>
+                    <th>Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.map((row, idx) => (
+                    <tr key={idx}>
+                      <td><span className="font-semibold text-white">{row.name}</span></td>
+                      <td>{row.location}</td>
+                      <td>{row.capacity}</td>
+                      <td><span className="badge badge-success capitalize">{row.status}</span></td>
                     </tr>
                   ))}
                 </tbody>

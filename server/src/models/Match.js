@@ -48,7 +48,10 @@ const matchEventSchema = new mongoose.Schema({
 const matchSchema = new mongoose.Schema({
   sport: { type: String, required: true },
   type: { type: String, enum: ['tournament', 'friendly'], required: true },
-  refId: { type: mongoose.Schema.Types.ObjectId, required: true },
+  refId: { type: mongoose.Schema.Types.ObjectId, default: null },
+  fixtureId: { type: mongoose.Schema.Types.ObjectId, ref: 'Fixture', default: null },
+  friendlyMatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'FriendlyMatch', default: null },
+  resultId: { type: mongoose.Schema.Types.ObjectId, ref: 'MatchResult', default: null },
   teamA: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
   teamB: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
   groundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ground' },
@@ -74,7 +77,8 @@ const matchSchema = new mongoose.Schema({
   events: [matchEventSchema],
 
   // Match officials and result
-  scorerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+  scorerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  scorerLockedAt: { type: Date },
   playerOfMatchId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
   winnerId: { type: mongoose.Schema.Types.ObjectId, ref: 'Team' },
   resultSummary: { type: String },

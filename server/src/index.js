@@ -63,12 +63,28 @@ app.use(cors({
 }));
 
 // Rate Limiting
-const limiter = rateLimit({
+const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  max: 200,
-  message: { success: false, message: 'Too many requests, please try again later.' }
+  max: 10,
+  message: { success: false, message: 'Too many login attempts. Please wait 15 minutes.' }
 });
-app.use('/api/', limiter);
+
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 1000,
+  message: { success: false, message: 'Too many requests, please try again later.' },
+  skip: (req) => {
+    return (
+      req.path.includes('/notifications') ||
+      req.path.includes('/live') ||
+      req.path.includes('/scorecard') ||
+      req.path === '/health'
+    );
+  }
+});
+
+app.use('/api/v1/auth', authLimiter);
+app.use('/api/', generalLimiter);
 
 // Logging & Body Parsing
 if (process.env.NODE_ENV === 'development') app.use(morgan('dev'));

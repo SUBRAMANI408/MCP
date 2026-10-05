@@ -16,6 +16,7 @@ const {
   getMyInvitations,
   acceptInvitation,
   rejectInvitation,
+  getTeamPlayers,
 } = require('../controllers/teamController');
 
 router.use(authenticate);
@@ -33,6 +34,7 @@ router.post('/', authorize('captain'), [
 router.get('/my-team', getMyTeam);
 router.get('/', getTeamsByAssociation);
 router.get('/:id', getTeam);
+router.get('/:id/players', getTeamPlayers);
 router.put('/:id', authorize('captain', 'association_head', 'admin'), updateTeam);
 router.post('/:id/invite', authorize('captain', 'vice_captain'), invitePlayer);
 router.delete('/:id/players/:playerId', authorize('captain'), removePlayer);

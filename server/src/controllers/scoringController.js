@@ -5,14 +5,16 @@ const { successResponse } = require('../utils/apiResponse');
 /* ─── Setup match (pre-match) ──────────────────────────────────────────────── */
 exports.setupMatch = async (req, res) => {
   const {
-    sport, teamAId, teamBId, groundId, type, refId, scheduledAt,
+    sport, teamAId, teamBId, groundId, type, refId, fixtureId, friendlyMatchId, scheduledAt,
     totalOvers, ballType, numPlayers, tossWinner, tossDecision, associationId
   } = req.body;
 
   const match = await Match.create({
     sport: sport || 'cricket',
     type: type || 'friendly',
-    refId,
+    refId: refId || null,
+    fixtureId: fixtureId || null,
+    friendlyMatchId: friendlyMatchId || null,
     teamA: teamAId,
     teamB: teamBId,
     groundId: groundId || null,
@@ -242,4 +244,17 @@ exports.setPlayerOfMatch = async (req, res) => {
   const io = req.app.get('io');
   io.to(`match:${match._id}`).emit('match:player_of_match', { player: match.playerOfMatchId });
   successResponse(res, match, 'Player of match set');
+};
+
+/* ─── Takeover Scoring ─────────────────────────────────────────────────────── */
+exports.takeoverScoring = async (req, res) => {
+  const match = await Match.findById(req.params.id);
+  if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
+  if (match.status !== 'live') return res.status(400).json({ success: false, message: 'Match is not live' });
+
+  match.scorerId = req.user._id;
+  match.scorerLockedAt = new Date();
+  await match.save();
+
+  successResponse(res, { scorerId: match.scorerId }, 'Successfully taken over scoring');
 };

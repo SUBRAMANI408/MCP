@@ -55,14 +55,17 @@ exports.getBooking = async (req, res) => {
 };
 
 exports.approveBooking = async (req, res) => {
-  const booking = await Booking.findById(req.params.id).populate('teamId', 'name captainId');
+  const mongoose = require('mongoose');
+  let booking = await Booking.findById(req.params.id).populate('teamId', 'name captainId');
   if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
-  // Check for conflicts
+
   const conflict = await checkBookingConflict(booking.groundId, booking.date, booking.startTime, booking.endTime, booking._id);
+
+  let conflictTeam;
+  let requestTeam;
   if (conflict) {
-    // Priority comparison
-    const conflictTeam = await Team.findById(conflict.teamId);
-    const requestTeam = await Team.findById(booking.teamId);
+    conflictTeam = await Team.findById(conflict.teamId);
+    requestTeam = await Team.findById(booking.teamId);
     if (requestTeam.matchesPlayed < conflictTeam.matchesPlayed) {
       booking.status = 'conflict';
       await booking.save();
@@ -72,27 +75,72 @@ exports.approveBooking = async (req, res) => {
         conflict: { bookingId: conflict._id, team: conflictTeam.name }
       });
     }
-    // Override lower priority
-    await Booking.findByIdAndUpdate(conflict._id, { status: 'rejected', rejectionReason: 'Overridden by higher priority team' });
-    await Notification.create({
-      userId: conflictTeam.captainId,
-      type: 'booking_rejected',
-      message: `Your booking was overridden by a higher priority team.`,
-      refId: conflict._id,
-    });
   }
-  booking.status = 'approved';
-  booking.approvedBy = req.user._id;
-  await booking.save();
-  await Notification.create({
-    userId: booking.teamId.captainId,
-    type: 'booking_approved',
-    message: `Your ground booking on ${new Date(booking.date).toDateString()} has been approved.`,
-    refId: booking._id,
-  });
+
+  try {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        if (conflict) {
+          await Booking.findByIdAndUpdate(conflict._id, { status: 'rejected', rejectionReason: 'Overridden by higher priority team' }, { session });
+          await Notification.create([{
+            userId: conflictTeam.captainId,
+            type: 'booking_rejected',
+            message: `Your booking was overridden by a higher priority team.`,
+            refId: conflict._id,
+          }], { session });
+        }
+        
+        booking.status = 'approved';
+        booking.approvedBy = req.user._id;
+        await booking.save({ session });
+        
+        await Notification.create([{
+          userId: booking.teamId.captainId,
+          type: 'booking_approved',
+          message: `Your ground booking on ${new Date(booking.date).toDateString()} has been approved.`,
+          refId: booking._id,
+        }], { session });
+      });
+      session.endSession();
+    } catch (txErr) {
+      session.endSession();
+      if (txErr.message && (txErr.message.includes('Transaction') || txErr.message.includes('replica set'))) {
+        throw txErr;
+      }
+      return res.status(500).json({ success: false, message: 'Booking approval failed in transaction' });
+    }
+  } catch (err) {
+    // Fallback without transaction
+    try {
+      if (conflict) {
+        await Booking.findByIdAndUpdate(conflict._id, { status: 'rejected', rejectionReason: 'Overridden by higher priority team' });
+        await Notification.create({
+          userId: conflictTeam.captainId,
+          type: 'booking_rejected',
+          message: `Your booking was overridden by a higher priority team.`,
+          refId: conflict._id,
+        });
+      }
+      
+      booking.status = 'approved';
+      booking.approvedBy = req.user._id;
+      await booking.save();
+      
+      await Notification.create({
+        userId: booking.teamId.captainId,
+        type: 'booking_approved',
+        message: `Your ground booking on ${new Date(booking.date).toDateString()} has been approved.`,
+        refId: booking._id,
+      });
+    } catch (fallbackErr) {
+      return res.status(500).json({ success: false, message: 'Booking approval failed' });
+    }
+  }
+
   const io = req.app.get('io');
   io.to(booking.teamId.captainId.toString()).emit('notification:new', { type: 'booking_approved' });
-  successResponse(res, booking, 'Booking approved');
+  return successResponse(res, booking, 'Booking approved');
 };
 
 exports.rejectBooking = async (req, res) => {

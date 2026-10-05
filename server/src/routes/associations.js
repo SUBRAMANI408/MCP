@@ -14,6 +14,7 @@ const {
   getAssociationMembers,
   approveTeam,
   rejectTeam,
+  requestCorrections,
   suspendTeam,
   reactivateTeam,
   getAssociation,
@@ -46,6 +47,7 @@ router.delete('/:id/temp-organizer/:captainId', authorize('admin', 'association_
 // Team management actions
 router.put('/teams/:teamId/approve', authorize('admin', 'association_head'), approveTeam);
 router.put('/teams/:teamId/reject', authorize('admin', 'association_head'), rejectTeam);
+router.put('/teams/:teamId/request-corrections', authorize('admin', 'association_head'), requestCorrections);
 router.put('/teams/:teamId/suspend', authorize('admin', 'association_head'), suspendTeam);
 router.put('/teams/:teamId/reactivate', authorize('admin', 'association_head'), reactivateTeam);
 

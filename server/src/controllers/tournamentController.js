@@ -6,14 +6,19 @@ const { generateRoundRobin, generateKnockout } = require('../utils/fixtureGenera
 const { successResponse, paginatedResponse } = require('../utils/apiResponse');
 
 exports.createTournament = async (req, res) => {
-  const { name, sport, associationId, registrationDeadline, startDate, endDate, format, maxTeams, description } = req.body;
+  const { name, sport, associationId, registrationStartDate, registrationDeadline, startDate, endDate, format, maxTeams, description, registrationFee, rules, prizeInfo, prizeDetails, contactInfo, banner } = req.body;
   const tournament = await Tournament.create({
     name, sport, associationId,
     organizerId: req.user._id,
-    registrationDeadline, startDate, endDate,
+    registrationStartDate, registrationDeadline, startDate, endDate,
     format: format || 'round_robin',
     maxTeams: maxTeams || 16,
     description,
+    registrationFee: registrationFee || 0,
+    rules,
+    prizeInfo: prizeInfo || prizeDetails,
+    contactInfo,
+    banner,
     status: 'draft',
   });
   successResponse(res, tournament, 'Tournament created', 201);
@@ -44,7 +49,27 @@ exports.getTournament = async (req, res) => {
 };
 
 exports.updateTournament = async (req, res) => {
-  const tournament = await Tournament.findByIdAndUpdate(req.params.id, req.body, { new: true });
+  const { name, sport, associationId, registrationStartDate, registrationDeadline, startDate, endDate, format, maxTeams, description, registrationFee, rules, prizeInfo, prizeDetails, contactInfo, banner, status } = req.body;
+  
+  const updateData = {};
+  if (name !== undefined) updateData.name = name;
+  if (sport !== undefined) updateData.sport = sport;
+  if (associationId !== undefined) updateData.associationId = associationId;
+  if (registrationStartDate !== undefined) updateData.registrationStartDate = registrationStartDate;
+  if (registrationDeadline !== undefined) updateData.registrationDeadline = registrationDeadline;
+  if (startDate !== undefined) updateData.startDate = startDate;
+  if (endDate !== undefined) updateData.endDate = endDate;
+  if (format !== undefined) updateData.format = format;
+  if (maxTeams !== undefined) updateData.maxTeams = maxTeams;
+  if (description !== undefined) updateData.description = description;
+  if (registrationFee !== undefined) updateData.registrationFee = registrationFee;
+  if (rules !== undefined) updateData.rules = rules;
+  if (prizeInfo !== undefined || prizeDetails !== undefined) updateData.prizeInfo = prizeInfo || prizeDetails;
+  if (contactInfo !== undefined) updateData.contactInfo = contactInfo;
+  if (banner !== undefined) updateData.banner = banner;
+  if (status !== undefined) updateData.status = status;
+
+  const tournament = await Tournament.findByIdAndUpdate(req.params.id, updateData, { new: true });
   if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
   successResponse(res, tournament, 'Tournament updated');
 };
@@ -101,6 +126,15 @@ exports.registerTeam = async (req, res) => {
   const tournament = await Tournament.findById(req.params.id);
   if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
   if (tournament.status !== 'approved') return res.status(400).json({ success: false, message: 'Tournament not open for registration' });
+  
+  const now = new Date();
+  if (tournament.registrationStartDate && now < new Date(tournament.registrationStartDate)) {
+    return res.status(400).json({ success: false, message: 'Registration has not started yet' });
+  }
+  if (tournament.registrationDeadline && now > new Date(tournament.registrationDeadline)) {
+    return res.status(400).json({ success: false, message: 'Registration deadline has passed' });
+  }
+
   if (tournament.registeredTeams.length >= tournament.maxTeams) {
     return res.status(400).json({ success: false, message: 'Tournament is full' });
   }

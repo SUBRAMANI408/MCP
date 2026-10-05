@@ -1,32 +1,91 @@
 const crypto = require('crypto');
 const User = require('../models/User');
-const { generateAccessToken, generateResetToken } = require('../utils/generateToken');
+const RefreshToken = require('../models/RefreshToken');
+const LoginAttempt = require('../models/LoginAttempt');
+const { generateAccessToken, generateResetToken, generateRefreshToken } = require('../utils/generateToken');
 const { sendEmail } = require('../config/email');
 const { successResponse } = require('../utils/apiResponse');
 const createNotification = require('../utils/createNotification');
 
 exports.login = async (req, res) => {
   const { email, password } = req.body;
+  const ip = req.ip || req.connection.remoteAddress || '';
+  const userAgent = req.headers['user-agent'] || '';
+
   const user = await User.findOne({ email }).select('+passwordHash');
-  if (!user || user.status === 'inactive') {
+
+  if (!user) {
+    await LoginAttempt.create({ email, success: false, ip, userAgent, reason: 'User not found' });
     return res.status(401).json({ success: false, message: 'Invalid email or password' });
   }
+
+  // Check account lockout
+  if (user.lockUntil && user.lockUntil > Date.now()) {
+    const minutesLeft = Math.ceil((user.lockUntil - Date.now()) / (60 * 1000));
+    await LoginAttempt.create({ email, userId: user._id, success: false, ip, userAgent, reason: 'Account locked' });
+    return res.status(403).json({
+      success: false,
+      message: `Account is temporarily locked due to multiple failed login attempts. Try again in ${minutesLeft} minute(s).`
+    });
+  }
+
+  // Check account status
+  if (user.status === 'inactive' || user.status === 'suspended') {
+    await LoginAttempt.create({ email, userId: user._id, success: false, ip, userAgent, reason: `Account ${user.status}` });
+    return res.status(403).json({ success: false, message: `Account is ${user.status}. Contact your administrator.` });
+  }
+
   const isMatch = await user.comparePassword(password);
   if (!isMatch) {
+    user.failedLoginAttempts = (user.failedLoginAttempts || 0) + 1;
+    let locked = false;
+    if (user.failedLoginAttempts >= 5) {
+      user.lockUntil = new Date(Date.now() + 15 * 60 * 1000); // Lock for 15 minutes
+      locked = true;
+    }
+    await user.save({ validateBeforeSave: false });
+
+    await LoginAttempt.create({
+      email,
+      userId: user._id,
+      success: false,
+      ip,
+      userAgent,
+      reason: locked ? 'Account locked after 5 failed attempts' : 'Incorrect password'
+    });
+
+    if (locked) {
+      return res.status(403).json({
+        success: false,
+        message: 'Account locked due to 5 consecutive failed login attempts. Locked for 15 minutes.'
+      });
+    }
+
     return res.status(401).json({ success: false, message: 'Invalid email or password' });
   }
+
+  // Successful login: reset attempts and record lastLogin
+  user.failedLoginAttempts = 0;
+  user.lockUntil = null;
+  user.lastLogin = new Date();
+  await user.save({ validateBeforeSave: false });
+
+  await LoginAttempt.create({ email, userId: user._id, success: true, ip, userAgent });
+
   const token = generateAccessToken(user._id, user.role, user.associationId, user.teamId);
-  successResponse(res, { token, user: user.toJSON() }, 'Login successful');
+  const refreshToken = await generateRefreshToken(user._id, ip, userAgent);
+
+  successResponse(res, { token, refreshToken, user: user.toJSON() }, 'Login successful');
 };
 
 exports.register = async (req, res) => {
-  const { name, email, password, role, associationId, teamId, phone } = req.body;
+  const { name, email, password, associationId, teamId, phone } = req.body;
   const existingUser = await User.findOne({ email });
   if (existingUser) {
     return res.status(400).json({ success: false, message: 'Email already registered' });
   }
   const user = new User({
-    name, email, passwordHash: password, role,
+    name, email, passwordHash: password, role: 'player',
     associationId: associationId || null,
     teamId: teamId || null,
     phone: phone || null,
@@ -101,4 +160,56 @@ exports.changePassword = async (req, res) => {
   user.passwordHash = newPassword;
   await user.save();
   res.status(200).json({ success: true, message: 'Password changed successfully' });
+};
+
+exports.refreshToken = async (req, res) => {
+  const { refreshToken } = req.body;
+  const ip = req.ip || req.connection.remoteAddress || '';
+  const userAgent = req.headers['user-agent'] || '';
+
+  if (!refreshToken) {
+    return res.status(400).json({ success: false, message: 'Refresh token required' });
+  }
+
+  const tokenDoc = await RefreshToken.findOne({ token: refreshToken });
+  if (!tokenDoc || !tokenDoc.isValid()) {
+    return res.status(401).json({ success: false, message: 'Invalid or expired refresh token' });
+  }
+
+  const user = await User.findById(tokenDoc.userId);
+  if (!user || user.status === 'inactive' || user.status === 'suspended') {
+    return res.status(401).json({ success: false, message: 'User account inactive or suspended' });
+  }
+
+  // Token rotation: revoke old, issue new
+  tokenDoc.revokedAt = new Date();
+  const newRefreshToken = await generateRefreshToken(user._id, ip, userAgent);
+  tokenDoc.replacedByToken = newRefreshToken;
+  await tokenDoc.save();
+
+  const newAccessToken = generateAccessToken(user._id, user.role, user.associationId, user.teamId);
+
+  successResponse(res, {
+    token: newAccessToken,
+    refreshToken: newRefreshToken,
+  }, 'Token refreshed successfully');
+};
+
+exports.logout = async (req, res) => {
+  const { refreshToken } = req.body;
+  if (refreshToken) {
+    await RefreshToken.findOneAndUpdate(
+      { token: refreshToken },
+      { revokedAt: new Date() }
+    );
+  }
+  successResponse(res, null, 'Logged out successfully');
+};
+
+exports.logoutAll = async (req, res) => {
+  await RefreshToken.updateMany(
+    { userId: req.user._id, revokedAt: null },
+    { revokedAt: new Date() }
+  );
+  successResponse(res, null, 'Logged out from all devices');
 };

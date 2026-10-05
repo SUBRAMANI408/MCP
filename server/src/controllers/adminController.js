@@ -330,6 +330,45 @@ exports.getAuditLogs = async (req, res) => {
   paginatedResponse(res, logs, { total, page: Number(page), pages: Math.ceil(total / limit) });
 };
 
+exports.exportAuditLogs = async (req, res) => {
+  const { action, startDate, endDate, format = 'csv' } = req.query;
+  const query = {};
+  if (action) query.action = action;
+  if (startDate || endDate) {
+    query.createdAt = {};
+    if (startDate) query.createdAt.$gte = new Date(startDate);
+    if (endDate) query.createdAt.$lte = new Date(endDate);
+  }
+
+  const logs = await AuditLog.find(query)
+    .populate('performedBy', 'name email role')
+    .populate('targetUser', 'name email role')
+    .sort({ createdAt: -1 })
+    .limit(1000);
+
+  if (format === 'json') {
+    return res.json({ success: true, data: logs });
+  }
+
+  // Generate CSV
+  const header = 'Timestamp,Action,Actor,Actor Role,Target User,Target Model,Target ID,Details\n';
+  const rows = logs.map(l => {
+    const timestamp = l.createdAt ? new Date(l.createdAt).toISOString() : '';
+    const action = `"${(l.action || '').replace(/"/g, '""')}"`;
+    const actor = `"${(l.performedBy?.name || l.performedBy?.email || 'System').replace(/"/g, '""')}"`;
+    const actorRole = `"${(l.performedBy?.role || '').replace(/"/g, '""')}"`;
+    const targetUser = `"${(l.targetUser?.name || l.targetUser?.email || '').replace(/"/g, '""')}"`;
+    const targetModel = `"${(l.targetModel || '').replace(/"/g, '""')}"`;
+    const targetId = `"${(l.targetId || '').toString().replace(/"/g, '""')}"`;
+    const details = `"${JSON.stringify(l.details || {}).replace(/"/g, '""')}"`;
+    return [timestamp, action, actor, actorRole, targetUser, targetModel, targetId, details].join(',');
+  }).join('\n');
+
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', 'attachment; filename=audit-logs.csv');
+  res.send(header + rows);
+};
+
 exports.sendAdminNotification = async (req, res) => {
   const { target, targetIds, message, type = 'general' } = req.body;
   

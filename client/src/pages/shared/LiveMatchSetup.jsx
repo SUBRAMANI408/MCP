@@ -50,10 +50,12 @@ export default function LiveMatchSetup() {
     if (form.sport === 'cricket' && !form.tossWinner) return toast.error('Select toss winner');
     setLoading(true);
     try {
-      const res = await api.post('/scoring/setup', {
-        ...form,
-        refId: form.teamAId, // placeholder refId for friendly
-      });
+      const payload = { ...form };
+      if (!payload.fixtureId) payload.fixtureId = null;
+      if (!payload.friendlyMatchId) payload.friendlyMatchId = null;
+      payload.refId = null;
+
+      const res = await api.post('/scoring/setup', payload);
       const match = res.data.data;
       // Start the match
       await api.post(`/matches/${match._id}/start`);

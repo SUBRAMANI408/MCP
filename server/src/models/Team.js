@@ -7,7 +7,7 @@ const teamSchema = new mongoose.Schema({
   viceCaptainId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
   players: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
   sport: { type: String, required: true },
-  status: { type: String, enum: ['pending', 'approved', 'rejected'], default: 'pending' },
+  status: { type: String, enum: ['pending', 'approved', 'rejected', 'suspended', 'needs_correction'], default: 'pending' },
   matchesPlayed: { type: Number, default: 0 },
   wins: { type: Number, default: 0 },
   losses: { type: Number, default: 0 },

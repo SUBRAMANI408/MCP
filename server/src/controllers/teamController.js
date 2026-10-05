@@ -8,25 +8,85 @@ exports.createTeam = async (req, res) => {
   const { name, sport, associationId } = req.body;
   const existingTeam = await Team.findOne({ name, associationId });
   if (existingTeam) return res.status(400).json({ success: false, message: 'Team name already exists in this association' });
-  const team = await Team.create({
-    name, sport, associationId,
-    captainId: req.user._id,
-    players: [req.user._id],
-    status: 'pending',
-  });
-  // Update captain's teamId
-  await User.findByIdAndUpdate(req.user._id, { teamId: team._id });
-  
-  // Create team group chat automatically
-  await Group.create({
-    type: 'team',
-    refId: team._id,
-    name: `${team.name} Group`,
-    members: [req.user._id],
-    adminIds: [req.user._id],
-  });
+  const mongoose = require('mongoose');
+  let team;
+  try {
+    const session = await mongoose.startSession();
+    try {
+      await session.withTransaction(async () => {
+        const teams = await Team.create([{
+          name, sport, associationId,
+          captainId: req.user._id,
+          players: [req.user._id],
+          status: 'pending',
+        }], { session });
+        team = teams[0];
 
-  successResponse(res, team, 'Team created', 201);
+        await User.findByIdAndUpdate(req.user._id, { teamId: team._id }, { session });
+        
+        await Group.create([{
+          type: 'team',
+          refId: team._id,
+          name: `${team.name} Group`,
+          members: [req.user._id],
+          adminIds: [req.user._id],
+        }], { session });
+      });
+      session.endSession();
+      return successResponse(res, team, 'Team created', 201);
+    } catch (txErr) {
+      session.endSession();
+      if (txErr.message && (txErr.message.includes('Transaction') || txErr.message.includes('replica set'))) {
+        throw txErr; // Handled by fallback
+      }
+      console.error('Transaction error:', txErr);
+      return res.status(500).json({ success: false, message: 'Team creation failed in transaction' });
+    }
+  } catch (err) {
+    // Fallback logic for standalone/in-memory without transactions
+    try {
+      team = await Team.create({
+        name, sport, associationId,
+        captainId: req.user._id,
+        players: [req.user._id],
+        status: 'pending',
+      });
+      await User.findByIdAndUpdate(req.user._id, { teamId: team._id });
+      await Group.create({
+        type: 'team',
+        refId: team._id,
+        name: `${team.name} Group`,
+        members: [req.user._id],
+        adminIds: [req.user._id],
+      });
+      try {
+        const Association = require('../models/Association');
+        const assoc = await Association.findById(associationId);
+        if (assoc && assoc.headUserId) {
+          await Notification.create({
+            userId: assoc.headUserId,
+            type: 'general',
+            message: `New team "${team.name}" submitted for approval by captain ${req.user.name}.`,
+            refId: team._id,
+            refModel: 'Team',
+          });
+          const io = req.app.get('io');
+          if (io) io.to(assoc.headUserId.toString()).emit('notification:new', { type: 'team_submitted', teamId: team._id, teamName: team.name });
+        }
+      } catch (notifErr) {
+        console.error('Failed to notify association head:', notifErr);
+      }
+      return successResponse(res, team, 'Team created', 201);
+    } catch (fallbackErr) {
+      console.error('Fallback error:', fallbackErr);
+      // Attempt some manual rollback just in case
+      if (team) {
+        await Team.findByIdAndDelete(team._id);
+        await User.findByIdAndUpdate(req.user._id, { teamId: null });
+      }
+      return res.status(500).json({ success: false, message: 'Team creation failed' });
+    }
+  }
 };
 
 exports.getTeam = async (req, res) => {
@@ -37,6 +97,12 @@ exports.getTeam = async (req, res) => {
     .populate('associationId', 'name');
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
   successResponse(res, team);
+};
+
+exports.getTeamPlayers = async (req, res) => {
+  const team = await Team.findById(req.params.id).populate('players', 'name email avatar role teamId');
+  if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+  successResponse(res, team.players);
 };
 
 exports.updateTeam = async (req, res) => {
@@ -56,8 +122,15 @@ exports.invitePlayer = async (req, res) => {
   const { userId, message } = req.body;
   const Invitation = require('../models/Invitation');
   const team = await Team.findById(req.params.id);
-  if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
-  if (team.players.includes(userId)) return res.status(400).json({ success: false, message: 'Player already in team' });
+  const invitee = await User.findById(userId);
+  if (!invitee) return res.status(404).json({ success: false, message: 'User to invite not found' });
+  if (invitee.teamId) return res.status(400).json({ success: false, message: 'Player is already a member of another team' });
+  if (invitee.associationId && invitee.associationId.toString() !== team.associationId.toString()) {
+    return res.status(400).json({ success: false, message: 'Player belongs to a different association' });
+  }
+  if (team.players.some(p => p.toString() === userId)) {
+    return res.status(400).json({ success: false, message: 'Player is already in this team' });
+  }
 
   // Check if an active invitation already exists
   const existing = await Invitation.findOne({ teamId: team._id, playerId: userId, status: 'pending' });
@@ -170,6 +243,13 @@ exports.acceptInvitation = async (req, res) => {
   if (!invite) return res.status(404).json({ success: false, message: 'Invitation not found' });
   if (invite.playerId.toString() !== req.user._id.toString()) {
     return res.status(403).json({ success: false, message: 'Unauthorized' });
+  }
+
+  if (['captain', 'vice_captain'].includes(req.user.role)) {
+    return res.status(400).json({
+      success: false,
+      message: `Cannot accept player invitation: user already holds a ${req.user.role} role.`
+    });
   }
 
   invite.status = 'accepted';
