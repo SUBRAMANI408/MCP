@@ -258,3 +258,169 @@ exports.takeoverScoring = async (req, res) => {
 
   successResponse(res, { scorerId: match.scorerId }, 'Successfully taken over scoring');
 };
+
+const { generateCricketScorecard } = require('../utils/scorecardGenerator');
+
+/* ─── Cricket: Batsman & Bowler Selection (Phase 3.1) ─────────────────────── */
+exports.selectBatsman = async (req, res) => {
+  const { strikerId, nonStrikerId } = req.body;
+  const match = await Match.findById(req.params.id);
+  if (!match || match.sport !== 'cricket') return res.status(400).json({ success: false, message: 'Invalid cricket match' });
+
+  if (!match.currentBatsmen) {
+    match.currentBatsmen = {};
+  }
+  if (strikerId !== undefined) match.currentBatsmen.strikerId = strikerId || null;
+  if (nonStrikerId !== undefined) match.currentBatsmen.nonStrikerId = nonStrikerId || null;
+  match.markModified('currentBatsmen');
+  await match.save();
+
+  const io = req.app.get('io');
+  if (io) io.to(`match:${match._id}`).emit('match:batsmen_updated', { currentBatsmen: match.currentBatsmen });
+  successResponse(res, match.currentBatsmen, 'Batsmen updated');
+};
+
+exports.selectBowler = async (req, res) => {
+  const { bowlerId } = req.body;
+  const match = await Match.findById(req.params.id);
+  if (!match || match.sport !== 'cricket') return res.status(400).json({ success: false, message: 'Invalid cricket match' });
+
+  if (match.previousBowlerId && bowlerId && match.previousBowlerId.toString() === bowlerId.toString()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Rule violation: Same bowler cannot bowl consecutive overs'
+    });
+  }
+
+  match.currentBowlerId = bowlerId;
+  await match.save();
+
+  const io = req.app.get('io');
+  if (io) io.to(`match:${match._id}`).emit('match:bowler_updated', { currentBowlerId: match.currentBowlerId });
+  successResponse(res, { currentBowlerId: match.currentBowlerId }, 'Bowler selected');
+};
+
+exports.swapStrike = async (req, res) => {
+  const match = await Match.findById(req.params.id);
+  if (!match || match.sport !== 'cricket') return res.status(400).json({ success: false, message: 'Invalid cricket match' });
+
+  if (!match.currentBatsmen) {
+    match.currentBatsmen = {};
+  }
+  const temp = match.currentBatsmen.strikerId;
+  match.currentBatsmen.strikerId = match.currentBatsmen.nonStrikerId;
+  match.currentBatsmen.nonStrikerId = temp;
+  match.markModified('currentBatsmen');
+  await match.save();
+
+  const io = req.app.get('io');
+  if (io) io.to(`match:${match._id}`).emit('match:strike_swapped', { currentBatsmen: match.currentBatsmen });
+  successResponse(res, match.currentBatsmen, 'Strike swapped');
+};
+
+/* ─── Cricket: Undo Last Ball (Phase 3.2) ─────────────────────────────────── */
+exports.undoLastBall = async (req, res) => {
+  const match = await Match.findById(req.params.id);
+  if (!match || match.sport !== 'cricket') return res.status(400).json({ success: false, message: 'Invalid cricket match' });
+  if (match.status !== 'live') return res.status(400).json({ success: false, message: 'Match is not live' });
+
+  const inningIndex = match.currentInning || 0;
+  const inning = match.innings[inningIndex];
+  if (!inning || !inning.balls || inning.balls.length === 0) {
+    return res.status(400).json({ success: false, message: 'No balls to undo in this inning' });
+  }
+
+  const removedBall = inning.balls.pop();
+
+  // Recalculate totals
+  let totalRuns = 0;
+  let wickets = 0;
+  let legalBalls = 0;
+  const extras = { wide: 0, noBall: 0, bye: 0, legBye: 0, penalty: 0, total: 0 };
+
+  inning.balls.forEach(b => {
+    const isLegal = !b.extraType || b.extraType === 'bye' || b.extraType === 'leg_bye';
+    if (isLegal) legalBalls += 1;
+    if (b.isWicket) wickets += 1;
+    totalRuns += (b.runs || 0) + (b.extraRuns || (b.extraType ? 1 : 0));
+    if (b.extraType) {
+      extras[b.extraType] = (extras[b.extraType] || 0) + (b.extraRuns || 1);
+      extras.total += (b.extraRuns || 1);
+    }
+  });
+
+  inning.totalRuns = totalRuns;
+  inning.wickets = wickets;
+  inning.overs = `${Math.floor(legalBalls / 6)}.${legalBalls % 6}`;
+  inning.extras = extras;
+
+  const teamKey = inning.battingTeamId?.toString() === match.teamA?.toString() ? 'teamA' : 'teamB';
+  match.scoreSummary = {
+    ...match.scoreSummary,
+    [teamKey]: totalRuns,
+  };
+
+  match.markModified('innings');
+  match.markModified('scoreSummary');
+  await match.save();
+
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`match:${match._id}`).emit('match:update', {
+      matchId: match._id,
+      innings: match.innings,
+      scoreSummary: match.scoreSummary,
+      undoneBall: removedBall,
+    });
+  }
+
+  successResponse(res, { inning, scoreSummary: match.scoreSummary }, 'Last ball removed and recalculated');
+};
+
+/* ─── Match: Abandon (Phase 3.2) ─────────────────────────────────────────── */
+exports.abandonMatch = async (req, res) => {
+  const { reason = 'Weather / Abandoned' } = req.body;
+  const match = await Match.findById(req.params.id);
+  if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
+
+  match.status = 'cancelled';
+  match.resultSummary = `Match Abandoned: ${reason}`;
+  match.endedAt = new Date();
+  await match.save();
+
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`match:${match._id}`).emit('match:update', {
+      matchId: match._id,
+      status: 'cancelled',
+      resultSummary: match.resultSummary,
+    });
+  }
+
+  successResponse(res, match, 'Match abandoned successfully');
+};
+
+/* ─── Live Scorecard Aggregation (Phase 3.3) ──────────────────────────────── */
+exports.getScorecard = async (req, res) => {
+  const match = await Match.findById(req.params.id)
+    .populate('teamA', 'name sport logo')
+    .populate('teamB', 'name sport logo')
+    .populate('groundId', 'name location');
+
+  if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
+
+  if (match.sport === 'cricket') {
+    const scorecard = generateCricketScorecard(match);
+    return successResponse(res, scorecard);
+  }
+
+  // Non-cricket scoreboard
+  successResponse(res, {
+    matchId: match._id,
+    sport: match.sport,
+    status: match.status,
+    scoreSummary: match.scoreSummary,
+    events: match.events,
+    resultSummary: match.resultSummary,
+  });
+};

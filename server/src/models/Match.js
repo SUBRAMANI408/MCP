@@ -66,6 +66,18 @@ const matchSchema = new mongoose.Schema({
   ballType: { type: String, default: 'leather' },
   numPlayers: { type: Number, default: 11 },
 
+  // Lineups & Active Cricket State (Phase 3.1)
+  playingXI: {
+    teamA: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+    teamB: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  },
+  currentBatsmen: {
+    strikerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    nonStrikerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  },
+  currentBowlerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+  previousBowlerId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+
   // Cricket innings
   innings: [inningSchema],
   currentInning: { type: Number, default: 0 },

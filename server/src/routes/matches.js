@@ -19,6 +19,7 @@ router.get('/', getMatches);
 router.get('/live', getLiveMatches);
 router.get('/:id', getMatch);
 router.get('/:id/summary', getMatchSummary);
+router.get('/:id/scorecard', require('../controllers/scoringController').getScorecard);
 router.post('/:id/start', authorize('captain', 'vice_captain', 'tournament_organizer', 'admin', 'player'), authorizeMatchOp, startMatch);
 router.post('/:id/event', authorize('captain', 'vice_captain', 'player', 'tournament_organizer', 'admin'), authorizeMatchOp, addMatchEvent);
 router.put('/:id/complete', authorize('captain', 'vice_captain', 'tournament_organizer', 'admin', 'player'), authorizeMatchOp, completeMatch);

@@ -18,6 +18,7 @@ const {
   startTournament,
   completeTournament,
   getTournamentOrganizerDashboard,
+  getTournamentStandings,
 } = require('../controllers/tournamentController');
 
 router.use(authenticate);
@@ -32,6 +33,7 @@ router.post('/', authorize('tournament_organizer', 'admin'), [
 
 router.get('/', getTournaments);
 router.get('/:id', getTournament);
+router.get('/:id/standings', getTournamentStandings);
 router.get('/:id/reports', getTournamentReports);
 router.put('/:id', authorize('tournament_organizer', 'admin'), updateTournament);
 router.put('/:id/submit', authorize('tournament_organizer'), submitForApproval);

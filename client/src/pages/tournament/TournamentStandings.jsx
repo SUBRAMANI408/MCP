@@ -19,9 +19,10 @@ export default function TournamentStandings() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [tourRes, fixtureRes] = await Promise.all([
+      const [tourRes, fixtureRes, standingsRes] = await Promise.all([
         api.get(`/tournaments/${id}`),
         api.get('/fixtures', { params: { tournamentId: id } }),
+        api.get(`/tournaments/${id}/standings`).catch(() => null),
       ]);
 
       const tour = tourRes.data.data;
@@ -30,7 +31,24 @@ export default function TournamentStandings() {
       const fixtures = fixtureRes.data.data || [];
       setFixtures(fixtures);
 
-      // Build standings from completed fixtures
+      if (standingsRes?.data?.data?.standings?.length > 0) {
+        const serverStandings = standingsRes.data.data.standings.map(s => ({
+          team: s.teamId || {},
+          played: s.played,
+          won: s.won,
+          lost: s.lost,
+          drawn: s.drawn || s.tied,
+          goalsFor: s.goalsFor || s.runsFor,
+          goalsAgainst: s.goalsAgainst || s.runsAgainst,
+          points: s.points,
+          netRunRate: s.netRunRate,
+          rank: s.rank,
+        }));
+        setStandings(serverStandings);
+        return;
+      }
+
+      // Build standings from completed fixtures (fallback)
       const standingsMap = {};
 
       // Initialize all registered teams

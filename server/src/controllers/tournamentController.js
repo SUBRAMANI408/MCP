@@ -234,3 +234,38 @@ exports.getTournamentOrganizerDashboard = async (req, res) => {
     completedMatches
   });
 };
+
+const Standing = require('../models/Standing');
+
+exports.getTournamentStandings = async (req, res) => {
+  const { id } = req.params;
+  const tournament = await Tournament.findById(id).populate('registeredTeams', 'name sport logo');
+  if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
+
+  let standings = await Standing.find({ tournamentId: id })
+    .populate('teamId', 'name sport logo captainId')
+    .sort({ points: -1, netRunRate: -1, goalDifference: -1 });
+
+  if (standings.length === 0 && tournament.registeredTeams && tournament.registeredTeams.length > 0) {
+    const initStandings = tournament.registeredTeams.map((team, idx) => ({
+      tournamentId: id,
+      teamId: team._id,
+      rank: idx + 1,
+      played: 0,
+      won: 0,
+      lost: 0,
+      tied: 0,
+      drawn: 0,
+      points: 0,
+      netRunRate: 0,
+      goalDifference: 0,
+      streak: [],
+    }));
+    await Standing.insertMany(initStandings);
+    standings = await Standing.find({ tournamentId: id })
+      .populate('teamId', 'name sport logo captainId')
+      .sort({ rank: 1 });
+  }
+
+  successResponse(res, { tournament, standings });
+};

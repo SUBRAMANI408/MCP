@@ -88,29 +88,15 @@ exports.addMatchEvent = async (req, res) => {
   successResponse(res, { event, scoreSummary: match.scoreSummary });
 };
 
+const { completeMatchService } = require('../utils/matchCompletionService');
+
 exports.completeMatch = async (req, res) => {
   const { finalScore } = req.body;
-  const match = await Match.findById(req.params.id);
-  if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
-  match.status = 'completed';
-  match.endedAt = new Date();
-  if (finalScore) match.scoreSummary = finalScore;
-  await match.save();
-  // Increment matchesPlayed for both teams
-  await Team.updateMany(
-    { _id: { $in: [match.teamA, match.teamB] } },
-    { $inc: { matchesPlayed: 1 } }
-  );
-  // Update fixture/friendly match status
-  const fixtureId = match.fixtureId || (match.type === 'tournament' ? match.refId : null);
-  const friendlyMatchId = match.friendlyMatchId || (match.type === 'friendly' ? match.refId : null);
-
-  if (fixtureId) {
-    await Fixture.findByIdAndUpdate(fixtureId, { status: 'completed', matchId: match._id });
-  } else if (friendlyMatchId) {
-    await FriendlyMatch.findByIdAndUpdate(friendlyMatchId, { status: 'completed', matchId: match._id });
-  }
   const io = req.app.get('io');
-  io.to(`match:${match._id}`).emit('match:update', { matchId: match._id, status: 'completed', scoreSummary: match.scoreSummary });
-  successResponse(res, match, 'Match completed');
+  try {
+    const result = await completeMatchService(req.params.id, finalScore, req.user, io);
+    successResponse(res, result.match, result.resultLine || 'Match completed successfully');
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
 };
