@@ -38,6 +38,8 @@ exports.createAnnouncement = async (req, res) => {
   successResponse(res, announcement, 'Announcement created', 201);
 };
 
+const AnnouncementRead = require('../models/AnnouncementRead');
+
 exports.getAnnouncements = async (req, res) => {
   const { associationId, page = 1, limit = 10 } = req.query;
   const query = {};
@@ -46,13 +48,34 @@ exports.getAnnouncements = async (req, res) => {
   const announcements = await Announcement.find(query)
     .populate('postedBy', 'name')
     .skip((page - 1) * limit).limit(Number(limit)).sort({ createdAt: -1 });
-  paginatedResponse(res, announcements, { total, page: Number(page), pages: Math.ceil(total / limit) });
+
+  const readDocs = await AnnouncementRead.find({
+    userId: req.user._id,
+    announcementId: { $in: announcements.map(a => a._id) },
+  });
+  const readSet = new Set(readDocs.map(d => d.announcementId.toString()));
+  const formatted = announcements.map(a => ({
+    ...a.toObject(),
+    isRead: readSet.has(a._id.toString()),
+  }));
+
+  paginatedResponse(res, formatted, { total, page: Number(page), pages: Math.ceil(total / limit) });
 };
 
 exports.getAnnouncement = async (req, res) => {
   const announcement = await Announcement.findById(req.params.id).populate('postedBy', 'name avatar');
   if (!announcement) return res.status(404).json({ success: false, message: 'Announcement not found' });
-  successResponse(res, announcement);
+  const isRead = !!(await AnnouncementRead.findOne({ announcementId: announcement._id, userId: req.user._id }));
+  successResponse(res, { ...announcement.toObject(), isRead });
+};
+
+exports.markAsRead = async (req, res) => {
+  await AnnouncementRead.findOneAndUpdate(
+    { announcementId: req.params.id, userId: req.user._id },
+    { announcementId: req.params.id, userId: req.user._id, readAt: new Date() },
+    { upsert: true }
+  );
+  successResponse(res, null, 'Announcement marked as read');
 };
 
 exports.updateAnnouncement = async (req, res) => {

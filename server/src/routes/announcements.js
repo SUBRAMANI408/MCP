@@ -9,6 +9,7 @@ const {
   getAnnouncement,
   updateAnnouncement,
   deleteAnnouncement,
+  markAsRead,
 } = require('../controllers/announcementController');
 
 router.use(authenticate);
@@ -21,6 +22,7 @@ router.post('/', authorize('association_head', 'admin'), [
 
 router.get('/', getAnnouncements);
 router.get('/:id', getAnnouncement);
+router.post('/:id/read', markAsRead);
 router.put('/:id', authorize('association_head', 'admin'), updateAnnouncement);
 router.delete('/:id', authorize('association_head', 'admin'), deleteAnnouncement);
 

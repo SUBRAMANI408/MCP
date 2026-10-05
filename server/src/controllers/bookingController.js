@@ -9,14 +9,38 @@ exports.createBooking = async (req, res) => {
   const { groundId, teamId, date, startTime, endTime, purpose } = req.body;
   const team = await Team.findById(teamId);
   if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+
+  const ground = await Ground.findById(groundId);
+  if (!ground) return res.status(404).json({ success: false, message: 'Ground not found' });
+  if (ground.status === 'maintenance') {
+    return res.status(400).json({ success: false, message: 'Ground is currently closed for maintenance' });
+  }
+
+  // Check maintenance windows
+  const bookingDate = new Date(date);
+  const inMaintenance = (ground.maintenanceWindows || []).some(w => {
+    return bookingDate >= new Date(w.startDate) && bookingDate <= new Date(w.endDate);
+  });
+  if (inMaintenance) {
+    return res.status(400).json({ success: false, message: 'Ground is scheduled for maintenance on this date' });
+  }
+
+  const { computePriorityScore } = require('../utils/fairAllocation');
+  const { priorityScore, scoreBreakdown } = await computePriorityScore(
+    { teamId, groundId, date, purpose },
+    team,
+    ground
+  );
+
   const booking = await Booking.create({
     groundId, teamId, requestedBy: req.user._id,
     date, startTime, endTime, purpose: purpose || 'practice',
-    priorityScore: team.matchesPlayed,
+    priorityScore,
+    scoreBreakdown,
     status: 'pending',
   });
   const io = req.app.get('io');
-  io.to(req.user.associationId?.toString()).emit('booking:new', { bookingId: booking._id });
+  if (io) io.to(req.user.associationId?.toString()).emit('booking:new', { bookingId: booking._id, priorityScore });
   successResponse(res, booking, 'Booking request submitted', 201);
 };
 
@@ -251,4 +275,81 @@ exports.getGroundOfficerDashboard = async (req, res) => {
     mostUsedGround,
     leastUsedGround
   });
+};
+
+exports.getAllocationQueue = async (req, res) => {
+  const { groundId, date } = req.query;
+  const query = { status: 'pending' };
+  if (groundId) query.groundId = groundId;
+  if (date) {
+    const d = new Date(date);
+    query.date = { $gte: d, $lt: new Date(d.getTime() + 86400000) };
+  }
+
+  const queue = await Booking.find(query)
+    .populate('groundId', 'name location sportsSupported')
+    .populate('teamId', 'name sport captainId matchesPlayed')
+    .populate('requestedBy', 'name phone')
+    .sort({ priorityScore: -1, createdAt: 1 });
+
+  successResponse(res, queue);
+};
+
+exports.rescheduleBooking = async (req, res) => {
+  const { date, startTime, endTime } = req.body;
+  const booking = await Booking.findById(req.params.id).populate('teamId', 'name captainId');
+  if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+  // Conflict check
+  const conflict = await checkBookingConflict(booking.groundId, date, startTime, endTime, booking._id);
+  if (conflict) {
+    return res.status(409).json({ success: false, message: 'Requested slot has a conflict with an approved booking' });
+  }
+
+  booking.date = date;
+  booking.startTime = startTime;
+  booking.endTime = endTime;
+  booking.status = 'approved';
+  await booking.save();
+
+  if (booking.teamId?.captainId) {
+    await Notification.create({
+      userId: booking.teamId.captainId,
+      type: 'booking_rescheduled',
+      message: `Your booking for team "${booking.teamId.name}" has been rescheduled to ${new Date(date).toLocaleDateString()} ${startTime}-${endTime}`,
+      refId: booking._id,
+      refModel: 'Booking',
+    });
+  }
+
+  successResponse(res, booking, 'Booking rescheduled successfully');
+};
+
+exports.proposeAlternateSlot = async (req, res) => {
+  const { groundId, date, startTime, endTime, note } = req.body;
+  const booking = await Booking.findById(req.params.id).populate('teamId', 'name captainId');
+  if (!booking) return res.status(404).json({ success: false, message: 'Booking not found' });
+
+  booking.alternateSlotProposal = {
+    groundId: groundId || booking.groundId,
+    date,
+    startTime,
+    endTime,
+    note,
+    proposedAt: new Date(),
+    status: 'proposed',
+  };
+  await booking.save();
+
+  if (booking.teamId?.captainId) {
+    await Notification.create({
+      userId: booking.teamId.captainId,
+      type: 'general',
+      message: `An alternate slot has been proposed for your booking on ${new Date(date).toLocaleDateString()} ${startTime}-${endTime}`,
+      refId: booking._id,
+      refModel: 'Booking',
+    });
+  }
+
+  successResponse(res, booking, 'Alternate slot proposed to team captain');
 };

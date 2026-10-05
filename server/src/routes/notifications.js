@@ -6,9 +6,16 @@ const {
   markAsRead,
   markAllAsRead,
   deleteNotification,
+  getPreferences,
+  updatePreferences,
+  registerDeviceToken,
 } = require('../controllers/notificationController');
 
 router.use(authenticate);
+
+router.get('/preferences', getPreferences);
+router.put('/preferences', updatePreferences);
+router.post('/device-token', registerDeviceToken);
 
 router.get('/', getNotifications);
 router.put('/:id/read', markAsRead);

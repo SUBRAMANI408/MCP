@@ -200,6 +200,18 @@ async function completeMatchService(matchId, finalScoreData = null, actorUser = 
 
   if (fixtureId) {
     await Fixture.findByIdAndUpdate(fixtureId, { status: 'completed', matchId: match._id });
+
+    // Auto-advance winner to subsequent tournament rounds (Phase 4.2)
+    if (winnerId) {
+      await Fixture.updateMany(
+        { sourceFixtureA: fixtureId },
+        { teamA: winnerId }
+      );
+      await Fixture.updateMany(
+        { sourceFixtureB: fixtureId },
+        { teamB: winnerId }
+      );
+    }
   } else if (friendlyMatchId) {
     await FriendlyMatch.findByIdAndUpdate(friendlyMatchId, { status: 'completed', matchId: match._id });
   }

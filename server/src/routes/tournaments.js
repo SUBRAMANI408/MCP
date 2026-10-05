@@ -19,6 +19,8 @@ const {
   completeTournament,
   getTournamentOrganizerDashboard,
   getTournamentStandings,
+  getTournamentRegistrations,
+  reviewTournamentRegistration,
 } = require('../controllers/tournamentController');
 
 router.use(authenticate);
@@ -41,6 +43,8 @@ router.put('/:id/approve', authorize('association_head', 'admin'), approveTourna
 router.put('/:id/reject', authorize('association_head', 'admin'), rejectTournament);
 router.post('/:id/register', authorize('captain'), registerTeam);
 router.delete('/:id/register', authorize('captain'), unregisterTeam);
+router.get('/:id/registrations', authorize('tournament_organizer', 'admin', 'association_head'), getTournamentRegistrations);
+router.put('/:id/registrations/:regId', authorize('tournament_organizer', 'admin'), reviewTournamentRegistration);
 router.post('/:id/generate-fixtures', authorize('tournament_organizer', 'admin'), generateFixtures);
 router.put('/:id/start', authorize('tournament_organizer', 'admin'), startTournament);
 router.put('/:id/complete', authorize('tournament_organizer', 'admin'), completeTournament);

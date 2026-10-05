@@ -25,13 +25,33 @@ const authenticate = async (req, res, next) => {
 
 const authorize = (...roles) => {
   return (req, res, next) => {
-    if (!roles.includes(req.user.role)) {
-      return res.status(403).json({
-        success: false,
-        message: `Role '${req.user.role}' is not authorized to access this route`
-      });
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
     }
-    next();
+
+    // Direct role match
+    if (roles.includes(req.user.role)) {
+      return next();
+    }
+
+    // Phase 10: Temporary Tournament Organizer permission delegation
+    if (
+      roles.includes('tournament_organizer') &&
+      req.user.tempOrganizer?.isTemp &&
+      req.user.tempOrganizer?.status === 'active'
+    ) {
+      return next();
+    }
+
+    // Phase 10: Vice-captain delegated permissions for captain operations
+    if (roles.includes('captain') && req.user.role === 'vice_captain') {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: `Role '${req.user.role}' is not authorized to access this route`
+    });
   };
 };
 

@@ -254,15 +254,21 @@ exports.searchMessages = async (req, res) => {
 exports.deleteMessage = async (req, res) => {
   const message = await Message.findById(req.params.msgId);
   if (!message) return res.status(404).json({ success: false, message: 'Message not found' });
-  if (message.senderId.toString() !== req.user._id.toString()) {
+
+  const isOwner = message.senderId.toString() === req.user._id.toString();
+  const isModerator = req.user.role === 'admin' || req.user.role === 'association_head';
+
+  if (!isOwner && !isModerator) {
     return res.status(403).json({ success: false, message: 'Not authorized to delete this message' });
   }
+
   message.deleted = true;
-  message.content = 'This message was deleted';
+  message.content = isModerator && !isOwner ? 'This message was deleted by a moderator' : 'This message was deleted';
   message.mediaUrl = null;
   await message.save();
+
   const io = req.app.get('io');
-  io.to(`group:${message.groupId}`).emit('message:deleted', { messageId: message._id });
+  if (io) io.to(`group:${message.groupId}`).emit('message:deleted', { messageId: message._id, content: message.content });
   successResponse(res, null, 'Message deleted');
 };
 

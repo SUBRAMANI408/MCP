@@ -143,12 +143,44 @@ exports.registerTeam = async (req, res) => {
   if (tournament.registeredTeams.map(t => t.toString()).includes(teamId.toString())) {
     return res.status(400).json({ success: false, message: 'Team already registered' });
   }
+
+  const TournamentRegistration = require('../models/TournamentRegistration');
+  const Team = require('../models/Team');
+  const team = await Team.findById(teamId).populate('players', 'name role email');
+
+  const rosterSnapshot = (team?.players || []).map(p => ({
+    userId: p._id,
+    name: p.name,
+    role: p.role,
+  }));
+
+  const feeRequired = (tournament.registrationFee || 0) > 0;
+
+  const registration = await TournamentRegistration.findOneAndUpdate(
+    { tournamentId: tournament._id, teamId },
+    {
+      tournamentId: tournament._id,
+      teamId,
+      submittedBy: req.user._id,
+      status: 'pending',
+      registrationFeeStatus: feeRequired ? 'unpaid' : 'exempt',
+      rosterSnapshot,
+    },
+    { upsert: true, new: true }
+  );
+
   tournament.registeredTeams.push(teamId);
   await tournament.save();
-  successResponse(res, tournament, 'Team registered for tournament');
+  successResponse(res, { tournament, registration }, 'Team registration submitted');
 };
 
 exports.unregisterTeam = async (req, res) => {
+  const TournamentRegistration = require('../models/TournamentRegistration');
+  await TournamentRegistration.findOneAndUpdate(
+    { tournamentId: req.params.id, teamId: req.user.teamId },
+    { status: 'withdrawn' }
+  );
+
   const tournament = await Tournament.findByIdAndUpdate(
     req.params.id,
     { $pull: { registeredTeams: req.user.teamId } },
@@ -156,6 +188,39 @@ exports.unregisterTeam = async (req, res) => {
   );
   if (!tournament) return res.status(404).json({ success: false, message: 'Tournament not found' });
   successResponse(res, tournament, 'Team unregistered');
+};
+
+exports.getTournamentRegistrations = async (req, res) => {
+  const TournamentRegistration = require('../models/TournamentRegistration');
+  const registrations = await TournamentRegistration.find({ tournamentId: req.params.id })
+    .populate('teamId', 'name sport logo captainId')
+    .populate('submittedBy', 'name email phone')
+    .sort({ createdAt: -1 });
+  successResponse(res, registrations);
+};
+
+exports.reviewTournamentRegistration = async (req, res) => {
+  const { status, rejectionReason } = req.body;
+  const TournamentRegistration = require('../models/TournamentRegistration');
+  const registration = await TournamentRegistration.findById(req.params.regId);
+  if (!registration) return res.status(404).json({ success: false, message: 'Registration not found' });
+
+  registration.status = status;
+  registration.verifiedBy = req.user._id;
+  if (rejectionReason) registration.rejectionReason = rejectionReason;
+  await registration.save();
+
+  if (status === 'approved') {
+    await Tournament.findByIdAndUpdate(registration.tournamentId, {
+      $addToSet: { registeredTeams: registration.teamId }
+    });
+  } else if (status === 'rejected') {
+    await Tournament.findByIdAndUpdate(registration.tournamentId, {
+      $pull: { registeredTeams: registration.teamId }
+    });
+  }
+
+  successResponse(res, registration, `Registration ${status}`);
 };
 
 exports.generateFixtures = async (req, res) => {
@@ -166,13 +231,17 @@ exports.generateFixtures = async (req, res) => {
   }
   // Delete existing fixtures
   await Fixture.deleteMany({ tournamentId: tournament._id });
+  
+  const { generateRoundRobin, generateKnockout, generateGroupKnockout } = require('../utils/fixtureGenerator');
   let fixtureData;
   if (tournament.format === 'knockout') {
-    fixtureData = generateKnockout(tournament.registeredTeams);
+    fixtureData = generateKnockout(tournament.registeredTeams, tournament._id);
+  } else if (tournament.format === 'group_knockout') {
+    fixtureData = generateGroupKnockout(tournament.registeredTeams, tournament._id);
   } else {
-    fixtureData = generateRoundRobin(tournament.registeredTeams);
+    fixtureData = generateRoundRobin(tournament.registeredTeams, tournament._id);
   }
-  const fixtures = await Fixture.insertMany(fixtureData.map(f => ({ ...f, tournamentId: tournament._id })));
+  const fixtures = await Fixture.insertMany(fixtureData);
   successResponse(res, fixtures, 'Fixtures generated', 201);
 };
 

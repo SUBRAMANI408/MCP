@@ -34,6 +34,9 @@ const reportRoutes = require('./routes/reports');
 const userRoutes = require('./routes/users');
 const scoringRoutes = require('./routes/scoring');
 const searchRoutes = require('./routes/search');
+const uploadRoutes = require('./routes/uploads');
+const paymentRoutes = require('./routes/payments');
+const expenseRoutes = require('./routes/expenses');
 
 const app = express();
 const server = http.createServer(app);
@@ -115,6 +118,9 @@ app.use('/api/v1/reports', reportRoutes);
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/scoring', scoringRoutes);
 app.use('/api/v1/search', searchRoutes);
+app.use('/api/v1/uploads', uploadRoutes);
+app.use('/api/v1/payments', paymentRoutes);
+app.use('/api/v1/expenses', expenseRoutes);
 
 // 404 handler
 app.use((req, res) => {

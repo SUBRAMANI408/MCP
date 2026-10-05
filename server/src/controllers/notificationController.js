@@ -31,3 +31,34 @@ exports.deleteNotification = async (req, res) => {
   await Notification.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
   successResponse(res, null, 'Notification deleted');
 };
+
+const NotificationPreference = require('../models/NotificationPreference');
+
+exports.getPreferences = async (req, res) => {
+  let prefs = await NotificationPreference.findOne({ userId: req.user._id });
+  if (!prefs) {
+    prefs = await NotificationPreference.create({ userId: req.user._id });
+  }
+  successResponse(res, prefs);
+};
+
+exports.updatePreferences = async (req, res) => {
+  const prefs = await NotificationPreference.findOneAndUpdate(
+    { userId: req.user._id },
+    req.body,
+    { new: true, upsert: true }
+  );
+  successResponse(res, prefs, 'Notification preferences updated');
+};
+
+exports.registerDeviceToken = async (req, res) => {
+  const { token, platform = 'web' } = req.body;
+  if (!token) return res.status(400).json({ success: false, message: 'Device token required' });
+
+  const prefs = await NotificationPreference.findOneAndUpdate(
+    { userId: req.user._id },
+    { $addToSet: { deviceTokens: { token, platform, updatedAt: new Date() } } },
+    { new: true, upsert: true }
+  );
+  successResponse(res, prefs, 'Device token registered');
+};

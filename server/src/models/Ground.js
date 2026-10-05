@@ -10,6 +10,11 @@ const groundSchema = new mongoose.Schema({
   bookingEnabled: { type: Boolean, default: true },
   status: { type: String, enum: ['active', 'maintenance'], default: 'active' },
   images: [{ type: String }],
+  maintenanceWindows: [{
+    startDate: { type: Date, required: true },
+    endDate: { type: Date, required: true },
+    reason: { type: String, default: 'Scheduled maintenance' },
+  }],
 }, { timestamps: true });
 
 module.exports = mongoose.model('Ground', groundSchema);

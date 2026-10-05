@@ -60,15 +60,30 @@ exports.acceptFriendlyMatch = async (req, res) => {
   }
   match.status = 'accepted';
   await match.save();
+
+  // Communication: Auto-create dedicated match group chat (Phase 8)
+  const Group = require('../models/Group');
+  await Group.findOneAndUpdate(
+    { type: 'friendly', refId: match._id },
+    {
+      type: 'friendly',
+      refId: match._id,
+      name: `${match.requestingTeamId.name} vs ${match.respondingTeamId.name} (Friendly)`,
+      members: [match.requestingTeamId.captainId, match.respondingTeamId.captainId],
+      adminIds: [match.requestingTeamId.captainId, match.respondingTeamId.captainId],
+    },
+    { upsert: true, new: true }
+  );
+
   await Notification.create({
     userId: match.requestingTeamId.captainId,
     type: 'friendly_accepted',
-    message: `${match.respondingTeamId.name} accepted your friendly match request!`,
+    message: `${match.respondingTeamId.name} accepted your friendly match request! A shared chat has been created.`,
     refId: match._id,
   });
   const io = req.app.get('io');
-  io.to(match.requestingTeamId.captainId.toString()).emit('notification:new', { type: 'friendly_accepted' });
-  successResponse(res, match, 'Friendly match accepted');
+  if (io) io.to(match.requestingTeamId.captainId.toString()).emit('notification:new', { type: 'friendly_accepted', matchId: match._id });
+  successResponse(res, match, 'Friendly match accepted and chat room created');
 };
 
 exports.rejectFriendlyMatch = async (req, res) => {

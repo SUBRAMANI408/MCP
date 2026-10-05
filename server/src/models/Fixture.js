@@ -1,11 +1,14 @@
 const mongoose = require('mongoose');
 
 const fixtureSchema = new mongoose.Schema({
-  tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', required: true },
+  tournamentId: { type: mongoose.Schema.Types.ObjectId, ref: 'Tournament', required: true, index: true },
   round: { type: Number, required: true },
   roundName: { type: String },
-  teamA: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
-  teamB: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', required: true },
+  teamA: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+  teamB: { type: mongoose.Schema.Types.ObjectId, ref: 'Team', default: null },
+  sourceFixtureA: { type: mongoose.Schema.Types.ObjectId, ref: 'Fixture', default: null },
+  sourceFixtureB: { type: mongoose.Schema.Types.ObjectId, ref: 'Fixture', default: null },
+  group: { type: String, default: null },
   groundId: { type: mongoose.Schema.Types.ObjectId, ref: 'Ground', default: null },
   scheduledDate: { type: Date },
   scheduledTime: { type: String },
