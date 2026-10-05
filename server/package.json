@@ -7,7 +7,8 @@
     "dev": "nodemon src/index.js",
     "start": "node src/index.js",
     "seed:admin": "node src/utils/seedAdmin.js",
-    "seed:demo": "node src/utils/populateDashboard.js"
+    "seed:demo": "node src/utils/populateDashboard.js",
+    "test": "node --test tests/**/*.test.js"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -26,6 +27,7 @@
     "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^6.9.13",
     "pdfkit": "^0.15.0",
+    "razorpay": "^2.9.8",
     "socket.io": "^4.7.5",
     "uuid": "^9.0.1"
   },

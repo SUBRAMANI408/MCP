@@ -96,8 +96,20 @@ import UnifiedCalendar from '../pages/shared/UnifiedCalendar';
 const ProtectedRoute = ({ children, allowedRoles }) => {
   const { isAuthenticated, user } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
-  if (allowedRoles && !allowedRoles.includes(user?.role)) {
-    return <Navigate to={getDashboardRoute(user?.role)} replace />;
+  if (allowedRoles) {
+    let hasAccess = allowedRoles.includes(user?.role);
+    if (!hasAccess && allowedRoles.includes('tournament_organizer')) {
+      const isTempActive = user?.tempOrganizer?.isTemp &&
+        user?.tempOrganizer?.status === 'active' &&
+        (!user.tempOrganizer.endTime || new Date(user.tempOrganizer.endTime) > new Date());
+      if (isTempActive) hasAccess = true;
+    }
+    if (!hasAccess && allowedRoles.includes('captain') && user?.role === 'vice_captain') {
+      hasAccess = true;
+    }
+    if (!hasAccess) {
+      return <Navigate to={getDashboardRoute(user?.role)} replace />;
+    }
   }
   return children;
 };

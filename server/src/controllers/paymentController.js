@@ -3,11 +3,24 @@ const Payment = require('../models/Payment');
 const Fund = require('../models/Fund');
 const TournamentRegistration = require('../models/TournamentRegistration');
 const Membership = require('../models/Membership');
-const { successResponse } = require('../utils/apiResponse');
+const { successResponse, paginatedResponse } = require('../utils/apiResponse');
+
+let razorpayInstance = null;
+if (process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET) {
+  try {
+    const Razorpay = require('razorpay');
+    razorpayInstance = new Razorpay({
+      key_id: process.env.RAZORPAY_KEY_ID,
+      key_secret: process.env.RAZORPAY_KEY_SECRET,
+    });
+  } catch (err) {
+    console.warn('[WARN] Razorpay SDK initialization error:', err.message);
+  }
+}
 
 /**
- * Razorpay Payment Controller (Phase 6.2)
- * Handles order creation, signature verification, and automated ledger recording.
+ * Razorpay Payment Controller (Phase 6.2 - Hardened)
+ * Enforces cryptographic HMAC verification, forbids bypass, and supports strict mock mode.
  */
 
 exports.createOrder = async (req, res) => {
@@ -16,15 +29,59 @@ exports.createOrder = async (req, res) => {
     return res.status(400).json({ success: false, message: 'Valid amount is required' });
   }
 
-  // Simulated / Real Razorpay Order ID
-  const orderId = `order_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isMockMode = process.env.PAYMENTS_MODE === 'mock';
+
+  if (isProduction && isMockMode) {
+    return res.status(500).json({
+      success: false,
+      message: 'CRITICAL: PAYMENTS_MODE=mock is strictly prohibited in production environments.'
+    });
+  }
+
+  let orderId;
+  let keyId = process.env.RAZORPAY_KEY_ID;
+
+  if (razorpayInstance) {
+    try {
+      const order = await razorpayInstance.orders.create({
+        amount: Math.round(amount * 100), // paise
+        currency: 'INR',
+        receipt: `rcpt_${Date.now()}`,
+        notes: { purpose, userId: req.user._id.toString() },
+      });
+      orderId = order.id;
+    } catch (sdkErr) {
+      console.error('Razorpay order creation failed:', sdkErr);
+      return res.status(502).json({ success: false, message: 'Gateway order creation failed', error: sdkErr.message });
+    }
+  } else if (isMockMode) {
+    orderId = `order_mock_${Date.now()}_${crypto.randomBytes(4).toString('hex')}`;
+    keyId = 'rzp_test_mock_mode';
+  } else {
+    return res.status(500).json({
+      success: false,
+      message: 'Payment gateway unconfigured: Set RAZORPAY_KEY_ID & RAZORPAY_KEY_SECRET or PAYMENTS_MODE=mock in development.'
+    });
+  }
+
+  let assocId = associationId || req.user.associationId;
+  if (!assocId) {
+    const Association = require('../models/Association');
+    const firstAssoc = await Association.findOne();
+    if (firstAssoc) {
+      assocId = firstAssoc._id;
+    } else {
+      return res.status(400).json({ success: false, message: 'Valid associationId is required for payment' });
+    }
+  }
 
   const payment = await Payment.create({
     payerUserId: req.user._id,
-    associationId: associationId || req.user.associationId,
+    associationId: assocId,
     purpose: purpose || 'other',
     relatedId: relatedId || null,
-    gateway: 'razorpay',
+    gateway: isMockMode ? 'mock' : 'razorpay',
     orderId,
     amount,
     currency: 'INR',
@@ -35,29 +92,67 @@ exports.createOrder = async (req, res) => {
     orderId: payment.orderId,
     amount: payment.amount,
     currency: payment.currency,
-    key: process.env.RAZORPAY_KEY_ID || 'rzp_test_sports123',
+    key: keyId,
     paymentId: payment._id,
+    isMock: isMockMode,
   }, 'Order created successfully', 201);
 };
 
 exports.verifyPayment = async (req, res) => {
   const { orderId, paymentId, signature } = req.body;
 
-  const payment = await Payment.findOne({ orderId });
-  if (!payment) {
-    return res.status(404).json({ success: false, message: 'Payment order not found' });
+  if (!orderId || !paymentId || !signature) {
+    return res.status(400).json({
+      success: false,
+      message: 'Payment verification requires orderId, paymentId, and signature.'
+    });
   }
 
-  // In production, verify HMAC signature
-  const keySecret = process.env.RAZORPAY_KEY_SECRET;
-  let isValid = true;
+  const payment = await Payment.findOne({ orderId });
+  if (!payment) {
+    return res.status(404).json({ success: false, message: 'Payment order record not found' });
+  }
 
-  if (keySecret && signature) {
-    const expectedSignature = crypto
-      .createHmac('sha256', keySecret)
-      .update(`${orderId}|${paymentId}`)
-      .digest('hex');
-    isValid = expectedSignature === signature;
+  const isProduction = process.env.NODE_ENV === 'production';
+  const isMockMode = process.env.PAYMENTS_MODE === 'mock';
+
+  // Default is strictly FALSE — never bypass!
+  let isValid = false;
+
+  if (payment.gateway === 'mock' || isMockMode) {
+    if (isProduction) {
+      return res.status(403).json({
+        success: false,
+        message: 'Mock payment verification forbidden in production.'
+      });
+    }
+    // Only accept exact mock signature token
+    const expectedMockSig = `mock_sig_${orderId}`;
+    isValid = signature === expectedMockSig;
+  } else {
+    const keySecret = process.env.RAZORPAY_KEY_SECRET;
+    if (!keySecret) {
+      return res.status(500).json({
+        success: false,
+        message: 'Payment gateway secret is not configured on the server.'
+      });
+    }
+
+    try {
+      const expectedSignature = crypto
+        .createHmac('sha256', keySecret)
+        .update(`${orderId}|${paymentId}`)
+        .digest('hex');
+
+      const expectedBuffer = Buffer.from(expectedSignature, 'utf8');
+      const signatureBuffer = Buffer.from(signature, 'utf8');
+
+      if (expectedBuffer.length === signatureBuffer.length) {
+        isValid = crypto.timingSafeEqual(expectedBuffer, signatureBuffer);
+      }
+    } catch (cryptoErr) {
+      isValid = false;
+    }
   }
 
   if (!isValid) {
@@ -100,23 +195,38 @@ exports.verifyPayment = async (req, res) => {
     await Fund.create({
       associationId: payment.associationId,
       type: 'income',
-      category: payment.purpose === 'tournament_fee' ? 'tournament_fee' : 'membership_fee',
+      category: payment.purpose === 'membership_fee' ? 'membership_fee' : (payment.purpose === 'tournament_fee' ? 'tournament_fee' : 'other'),
       amount: payment.amount,
-      description: `Payment for ${payment.purpose.replace(/_/g, ' ')} (${orderId})`,
+      description: `Online Payment (${payment.gateway}) - Ref: ${paymentId}`,
       requestedBy: payment.payerUserId,
       status: 'completed',
+      receiptStatus: 'pending',
     });
   } catch (fundErr) {
-    console.error('Failed to log fund income from payment:', fundErr);
+    console.error('Failed to post payment to Fund ledger:', fundErr);
   }
 
-  successResponse(res, payment, 'Payment verified successfully');
+  successResponse(res, { payment }, 'Payment verified and ledger posted successfully');
 };
 
 exports.getPaymentHistory = async (req, res) => {
-  const query = req.user.role === 'admin' ? {} : { payerUserId: req.user._id };
+  const { page = 1, limit = 20, status } = req.query;
+  const query = {};
+
+  if (req.user.role !== 'admin') {
+    query.associationId = req.user.associationId;
+    if (['player', 'captain', 'vice_captain'].includes(req.user.role)) {
+      query.payerUserId = req.user._id;
+    }
+  }
+  if (status) query.status = status;
+
+  const total = await Payment.countDocuments(query);
   const payments = await Payment.find(query)
     .populate('payerUserId', 'name email')
-    .sort({ createdAt: -1 });
-  successResponse(res, payments);
+    .sort({ createdAt: -1 })
+    .skip((page - 1) * limit)
+    .limit(Number(limit));
+
+  paginatedResponse(res, payments, { total, page: Number(page), pages: Math.ceil(total / limit) });
 };

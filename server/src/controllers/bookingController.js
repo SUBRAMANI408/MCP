@@ -90,13 +90,15 @@ exports.approveBooking = async (req, res) => {
   if (conflict) {
     conflictTeam = await Team.findById(conflict.teamId);
     requestTeam = await Team.findById(booking.teamId);
-    if (requestTeam.matchesPlayed < conflictTeam.matchesPlayed) {
+    const requestScore = (booking.priorityScore ?? booking.fairScore) ?? 0;
+    const conflictScore = (conflict.priorityScore ?? conflict.fairScore) ?? 0;
+    if (requestScore <= conflictScore) {
       booking.status = 'conflict';
       await booking.save();
       return res.status(409).json({
         success: false,
-        message: 'Booking conflict exists. Current booking has lower priority.',
-        conflict: { bookingId: conflict._id, team: conflictTeam.name }
+        message: 'Booking conflict exists. Current booking has lower or equal priority score.',
+        conflict: { bookingId: conflict._id, team: conflictTeam?.name, priorityScore: conflictScore }
       });
     }
   }

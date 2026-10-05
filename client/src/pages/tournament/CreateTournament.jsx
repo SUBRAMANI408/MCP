@@ -3,6 +3,7 @@ import { tournamentApi } from '../../api/tournamentApi';
 import api from '../../api/axios';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import FileUpload from '../../components/common/FileUpload';
 
 export default function CreateTournament() {
   const navigate = useNavigate();
@@ -23,6 +24,7 @@ export default function CreateTournament() {
   const [description, setDescription] = useState('');
   const [rules, setRules] = useState('');
   const [prizeDetails, setPrizeDetails] = useState('');
+  const [banner, setBanner] = useState('');
 
   useEffect(() => {
     // Fetch sports and associations
@@ -55,7 +57,8 @@ export default function CreateTournament() {
       registrationDeadline,
       description,
       rules,
-      prizeDetails
+      prizeDetails,
+      banner,
     };
 
     tournamentApi.createTournament(payload)
@@ -139,6 +142,17 @@ export default function CreateTournament() {
           <div>
             <label className="label">Registration Entry Fee (Rs.)</label>
             <input type="number" className="input" min="0" required value={registrationFee} onChange={e => setRegistrationFee(e.target.value)} />
+          </div>
+
+          <div>
+            <label className="label">Tournament Banner / Poster Image</label>
+            <FileUpload
+              type="image"
+              value={banner}
+              onChange={setBanner}
+              label="Upload Tournament Banner"
+              folder="tournaments"
+            />
           </div>
 
           <div>

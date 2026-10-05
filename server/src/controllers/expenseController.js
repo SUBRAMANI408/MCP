@@ -12,11 +12,13 @@ const { successResponse, paginatedResponse } = require('../utils/apiResponse');
 
 exports.createExpenseRequest = async (req, res) => {
   const { purpose, category, amount, attachments, notes } = req.body;
-  const associationId = req.user.associationId;
+  const associationId = req.user.associationId || req.body.associationId;
 
   if (!associationId) {
-    return res.status(400).json({ success: false, message: 'User does not belong to an association' });
+    return res.status(400).json({ success: false, message: 'User does not belong to an association and no associationId was provided' });
   }
+
+  const formattedAttachments = (attachments || []).map(a => typeof a === 'string' ? { url: a } : a);
 
   const expense = await ExpenseRequest.create({
     associationId,
@@ -24,7 +26,7 @@ exports.createExpenseRequest = async (req, res) => {
     purpose,
     category,
     amount,
-    attachments: attachments || [],
+    attachments: formattedAttachments,
     notes: notes || '',
     status: 'pending',
   });
@@ -134,10 +136,13 @@ exports.payExpenseRequest = async (req, res) => {
   await expense.save();
 
   // Record expenditure into the central Fund collection
+  const validFundCategories = ['membership_fee', 'tournament_fee', 'sponsorship', 'donation', 'expense', 'other'];
+  const fundCategory = validFundCategories.includes(expense.category) ? expense.category : 'expense';
+
   await Fund.create({
     associationId: expense.associationId,
     type: 'expense',
-    category: expense.category || 'expense',
+    category: fundCategory,
     amount: expense.amount,
     description: `Paid: ${expense.purpose} (Ref: ${expense.paymentRef})`,
     requestedBy: expense.requestedBy,

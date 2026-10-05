@@ -34,18 +34,28 @@ const authorize = (...roles) => {
       return next();
     }
 
-    // Phase 10: Temporary Tournament Organizer permission delegation
+    // Phase 10: Temporary Tournament Organizer permission delegation (§5)
     if (
       roles.includes('tournament_organizer') &&
       req.user.tempOrganizer?.isTemp &&
       req.user.tempOrganizer?.status === 'active'
     ) {
+      if (req.user.tempOrganizer.endTime && new Date(req.user.tempOrganizer.endTime) < new Date()) {
+        req.user.tempOrganizer.status = 'expired';
+        req.user.save().catch(() => {});
+        return res.status(403).json({
+          success: false,
+          message: 'Temporary tournament organizer authorization has expired'
+        });
+      }
       return next();
     }
 
-    // Phase 10: Vice-captain delegated permissions for captain operations
+    // Phase 10: Vice-captain delegated permissions for captain operations (§15)
     if (roles.includes('captain') && req.user.role === 'vice_captain') {
-      return next();
+      if (req.user.teamId) {
+        return next();
+      }
     }
 
     return res.status(403).json({

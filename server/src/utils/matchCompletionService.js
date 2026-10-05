@@ -153,6 +153,121 @@ async function completeMatchService(matchId, finalScoreData = null, actorUser = 
     await teamStat.save();
   }
 
+  // 3.5 Authoritative PlayerStat Upserts
+  try {
+    const updatedPlayerMatches = new Set();
+    const updatedPlayerPotm = new Set();
+
+    if (match.sport === 'cricket' && match.innings && match.innings.length > 0) {
+      for (const inn of match.innings) {
+        // Upsert batsman stats
+        if (inn.batsmen && inn.batsmen.length > 0) {
+          for (const b of inn.batsmen) {
+            if (!b.batsmanId) continue;
+            const bIdStr = b.batsmanId.toString();
+            let pStat = await PlayerStat.findOne({ playerId: b.batsmanId, sport: 'cricket', season: 'all-time' });
+            if (!pStat) {
+              pStat = new PlayerStat({ playerId: b.batsmanId, sport: 'cricket', season: 'all-time' });
+            }
+            if (!pStat.cricket) pStat.cricket = {};
+
+            if (!updatedPlayerMatches.has(bIdStr)) {
+              pStat.matches = (pStat.matches || 0) + 1;
+              updatedPlayerMatches.add(bIdStr);
+            }
+            pStat.cricket.innings = (pStat.cricket.innings || 0) + 1;
+            pStat.cricket.runs = (pStat.cricket.runs || 0) + (b.runs || 0);
+            pStat.cricket.ballsFaced = (pStat.cricket.ballsFaced || 0) + (b.balls || 0);
+            pStat.cricket.fours = (pStat.cricket.fours || 0) + (b.fours || 0);
+            pStat.cricket.sixes = (pStat.cricket.sixes || 0) + (b.sixes || 0);
+            if (!b.isOut) pStat.cricket.notOuts = (pStat.cricket.notOuts || 0) + 1;
+            if ((b.runs || 0) > (pStat.cricket.highestScore || 0)) pStat.cricket.highestScore = b.runs;
+
+            const outs = (pStat.cricket.innings || 0) - (pStat.cricket.notOuts || 0);
+            pStat.cricket.battingAverage = outs > 0
+              ? parseFloat((pStat.cricket.runs / outs).toFixed(2))
+              : pStat.cricket.runs;
+            pStat.cricket.strikeRate = pStat.cricket.ballsFaced > 0
+              ? parseFloat(((pStat.cricket.runs / pStat.cricket.ballsFaced) * 100).toFixed(2))
+              : 0;
+
+            if (match.playerOfMatchId && match.playerOfMatchId.toString() === bIdStr && !updatedPlayerPotm.has(bIdStr)) {
+              pStat.playerOfTheMatchCount = (pStat.playerOfTheMatchCount || 0) + 1;
+              updatedPlayerPotm.add(bIdStr);
+            }
+            await pStat.save();
+          }
+        }
+
+        // Upsert bowler stats
+        if (inn.bowlers && inn.bowlers.length > 0) {
+          for (const bow of inn.bowlers) {
+            if (!bow.bowlerId) continue;
+            const bowIdStr = bow.bowlerId.toString();
+            let pStat = await PlayerStat.findOne({ playerId: bow.bowlerId, sport: 'cricket', season: 'all-time' });
+            if (!pStat) {
+              pStat = new PlayerStat({ playerId: bow.bowlerId, sport: 'cricket', season: 'all-time' });
+            }
+            if (!pStat.cricket) pStat.cricket = {};
+
+            if (!updatedPlayerMatches.has(bowIdStr)) {
+              pStat.matches = (pStat.matches || 0) + 1;
+              updatedPlayerMatches.add(bowIdStr);
+            }
+            pStat.cricket.oversBowled = (pStat.cricket.oversBowled || 0) + (bow.overs || 0);
+            pStat.cricket.maidens = (pStat.cricket.maidens || 0) + (bow.maidens || 0);
+            pStat.cricket.runsConceded = (pStat.cricket.runsConceded || 0) + (bow.runsConceded || 0);
+            pStat.cricket.wickets = (pStat.cricket.wickets || 0) + (bow.wickets || 0);
+            pStat.cricket.economy = pStat.cricket.oversBowled > 0
+              ? parseFloat((pStat.cricket.runsConceded / pStat.cricket.oversBowled).toFixed(2))
+              : 0;
+
+            if (match.playerOfMatchId && match.playerOfMatchId.toString() === bowIdStr && !updatedPlayerPotm.has(bowIdStr)) {
+              pStat.playerOfTheMatchCount = (pStat.playerOfTheMatchCount || 0) + 1;
+              updatedPlayerPotm.add(bowIdStr);
+            }
+            await pStat.save();
+          }
+        }
+      }
+    } else if (match.events && match.events.length > 0) {
+      for (const ev of match.events) {
+        if (!ev.playerId) continue;
+        const pIdStr = ev.playerId.toString();
+        let pStat = await PlayerStat.findOne({ playerId: ev.playerId, sport: match.sport || 'football', season: 'all-time' });
+        if (!pStat) {
+          pStat = new PlayerStat({ playerId: ev.playerId, sport: match.sport || 'football', season: 'all-time' });
+        }
+        if (!pStat.football) pStat.football = {};
+
+        if (!updatedPlayerMatches.has(pIdStr)) {
+          pStat.matches = (pStat.matches || 0) + 1;
+          updatedPlayerMatches.add(pIdStr);
+        }
+        if (ev.type === 'goal') pStat.football.goals = (pStat.football.goals || 0) + 1;
+        if (ev.type === 'card' && ev.detail === 'yellow') pStat.football.yellowCards = (pStat.football.yellowCards || 0) + 1;
+        if (ev.type === 'card' && ev.detail === 'red') pStat.football.redCards = (pStat.football.redCards || 0) + 1;
+
+        if (match.playerOfMatchId && match.playerOfMatchId.toString() === pIdStr && !updatedPlayerPotm.has(pIdStr)) {
+          pStat.playerOfTheMatchCount = (pStat.playerOfTheMatchCount || 0) + 1;
+          updatedPlayerPotm.add(pIdStr);
+        }
+        await pStat.save();
+      }
+    }
+
+    // Ensure player of match is credited even if not already processed in events
+    if (match.playerOfMatchId && !updatedPlayerPotm.has(match.playerOfMatchId.toString())) {
+      const pStat = await PlayerStat.findOneAndUpdate(
+        { playerId: match.playerOfMatchId, sport: match.sport, season: 'all-time' },
+        { $inc: { playerOfTheMatchCount: 1, matches: 1 } },
+        { upsert: true, new: true }
+      );
+    }
+  } catch (statErr) {
+    console.error('Non-fatal error updating player statistics:', statErr);
+  }
+
   // 4. Update Tournament Standings (for tournament matches)
   if (isTournament && match.fixtureId) {
     const fixture = await Fixture.findById(match.fixtureId);
@@ -179,6 +294,39 @@ async function completeMatchService(matchId, finalScoreData = null, actorUser = 
           if (resultType === 'draw') standing.drawn += 1;
           else standing.tied += 1;
           standing.points += 1; // 1 point for tie/draw
+        }
+
+        // Net Run Rate / Goal Difference calculation
+        if (match.sport === 'cricket' && match.innings && match.innings.length >= 2) {
+          const inn1 = match.innings[0];
+          const inn2 = match.innings[1];
+          const isTeamInn1 = inn1.battingTeamId?.toString() === team._id.toString();
+          const teamInn = isTeamInn1 ? inn1 : inn2;
+          const oppInn = isTeamInn1 ? inn2 : inn1;
+
+          const teamRuns = teamInn.totalRuns || 0;
+          const teamOvers = teamInn.overs || (teamInn.legalDeliveries ? teamInn.legalDeliveries / 6 : 0) || 1;
+          const oppRuns = oppInn.totalRuns || 0;
+          const oppOvers = oppInn.overs || (oppInn.legalDeliveries ? oppInn.legalDeliveries / 6 : 0) || 1;
+
+          standing.runsFor = (standing.runsFor || 0) + teamRuns;
+          standing.oversFor = (standing.oversFor || 0) + teamOvers;
+          standing.runsAgainst = (standing.runsAgainst || 0) + oppRuns;
+          standing.oversAgainst = (standing.oversAgainst || 0) + oppOvers;
+
+          const nrrFor = standing.oversFor > 0 ? (standing.runsFor / standing.oversFor) : 0;
+          const nrrAgainst = standing.oversAgainst > 0 ? (standing.runsAgainst / standing.oversAgainst) : 0;
+          standing.netRunRate = parseFloat((nrrFor - nrrAgainst).toFixed(3));
+        } else if (match.scoreSummary) {
+          const isTeamA = match.teamA._id.toString() === team._id.toString();
+          const scoreA = Number(match.scoreSummary.teamA || match.scoreSummary[match.teamA._id] || 0);
+          const scoreB = Number(match.scoreSummary.teamB || match.scoreSummary[match.teamB._id] || 0);
+          const goalsFor = isTeamA ? scoreA : scoreB;
+          const goalsAgainst = isTeamA ? scoreB : scoreA;
+
+          standing.goalsFor = (standing.goalsFor || 0) + goalsFor;
+          standing.goalsAgainst = (standing.goalsAgainst || 0) + goalsAgainst;
+          standing.goalDifference = standing.goalsFor - standing.goalsAgainst;
         }
 
         standing.streak = [isWinner ? 'W' : (isLoser ? 'L' : 'D'), ...(standing.streak || [])].slice(0, 5);

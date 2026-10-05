@@ -6,7 +6,21 @@ const expenseRequestSchema = new mongoose.Schema({
   purpose: { type: String, required: true },
   category: {
     type: String,
-    enum: ['ground_maintenance', 'equipment', 'umpire_fee', 'tournament_expense', 'refreshments', 'medical', 'other'],
+    enum: [
+      'ground_maintenance',
+      'equipment',
+      'equipment_purchase',
+      'equipment_repair',
+      'tournament_expense',
+      'tournament_expenses',
+      'umpire_fee',
+      'refreshments',
+      'travel_expense',
+      'prize_distribution',
+      'office_expense',
+      'medical',
+      'other'
+    ],
     required: true,
   },
   amount: { type: Number, required: true, min: 1 },

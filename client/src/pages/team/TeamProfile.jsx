@@ -3,6 +3,7 @@ import { captainApi } from '../../api/captainApi';
 import { adminApi } from '../../api/adminApi';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import FileUpload from '../../components/common/FileUpload';
 
 export default function TeamProfile() {
   const [team, setTeam] = useState(null);
@@ -245,8 +246,14 @@ export default function TeamProfile() {
                 <input type="text" className="input" value={name} onChange={e => setName(e.target.value)} required />
               </div>
               <div>
-                <label className="label">Logo Image URL</label>
-                <input type="text" className="input" placeholder="https://example.com/logo.png" value={logo} onChange={e => setLogo(e.target.value)} />
+                <label className="label">Team Logo</label>
+                <FileUpload
+                  type="image"
+                  value={logo}
+                  onChange={setLogo}
+                  label="Upload Team Logo"
+                  folder="teams"
+                />
               </div>
             </div>
 

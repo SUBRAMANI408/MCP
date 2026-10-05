@@ -61,8 +61,33 @@ const denyIfCrossTenant = (docAssocId, user, res) => {
   return false; // Permitted
 };
 
+const docAssociationGuard = (Model, idParam = 'id', assocField = 'associationId') => {
+  return async (req, res, next) => {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Authentication required' });
+    }
+    if (req.user.role === 'admin') return next();
+
+    const id = req.params[idParam];
+    if (!id) return next();
+
+    try {
+      const doc = await Model.findById(id).select(assocField);
+      if (!doc) return res.status(404).json({ success: false, message: 'Resource not found' });
+      const assocId = doc[assocField];
+      if (assocId && denyIfCrossTenant(assocId, req.user, res)) {
+        return;
+      }
+      next();
+    } catch (err) {
+      next(err);
+    }
+  };
+};
+
 module.exports = {
   sameAssociation,
   requireAssociation,
-  denyIfCrossTenant
+  denyIfCrossTenant,
+  docAssociationGuard,
 };

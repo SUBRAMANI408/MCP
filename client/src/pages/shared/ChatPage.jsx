@@ -49,6 +49,10 @@ export default function ChatPage() {
   const [editingMsg, setEditingMsg] = useState(null);
   const [forwardMsg, setForwardMsg] = useState(null);
   const [forwardTargetGroupId, setForwardTargetGroupId] = useState('');
+  const [recording, setRecording] = useState(false);
+  const fileInputRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
 
   // UI state
   const [showSearch, setShowSearch] = useState(false);
@@ -217,6 +221,86 @@ export default function ChatPage() {
       setText('');
     } catch { toast.error('Send failed'); }
     setSending(false);
+  };
+
+  const handleMediaUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const isImage = file.type.startsWith('image/');
+    const type = isImage ? 'image' : 'document';
+
+    setSending(true);
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('folder', 'chat');
+    try {
+      const res = await api.post('/uploads', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      const url = res.data.data.url;
+      await api.post(`/groups/${groupId}/messages`, {
+        content: file.name,
+        type,
+        mediaUrl: url,
+        mediaName: file.name,
+        mediaMimeType: file.type,
+      });
+      toast.success('Attachment sent');
+    } catch (err) {
+      toast.error('Failed to upload and send attachment');
+    } finally {
+      setSending(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (recording) {
+      if (mediaRecorderRef.current) {
+        mediaRecorderRef.current.stop();
+        setRecording(false);
+      }
+    } else {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorderRef.current = new MediaRecorder(stream);
+        audioChunksRef.current = [];
+        mediaRecorderRef.current.ondataavailable = (event) => {
+          if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        };
+        mediaRecorderRef.current.onstop = async () => {
+          const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+          const audioFile = new File([audioBlob], `voice_${Date.now()}.webm`, { type: 'audio/webm' });
+          const formData = new FormData();
+          formData.append('file', audioFile);
+          formData.append('folder', 'chat');
+          setSending(true);
+          try {
+            const res = await api.post('/uploads', formData, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+            });
+            await api.post(`/groups/${groupId}/messages`, {
+              content: 'Voice note',
+              type: 'voice',
+              mediaUrl: res.data.data.url,
+              mediaName: 'Voice Note',
+              mediaMimeType: 'audio/webm',
+            });
+            toast.success('Voice note sent');
+          } catch {
+            toast.error('Failed to send voice note');
+          } finally {
+            setSending(false);
+          }
+          stream.getTracks().forEach((t) => t.stop());
+        };
+        mediaRecorderRef.current.start();
+        setRecording(true);
+        toast('Recording voice note... Click again to finish and send', { icon: '🎙️' });
+      } catch {
+        toast.error('Microphone access denied or unavailable');
+      }
+    }
   };
 
   const searchMessages = async () => {
@@ -628,11 +712,43 @@ export default function ChatPage() {
 
       {/* ── Input bar ─────────────────────────────────────────────────────────── */}
       <div className="px-4 py-3 bg-dark-800 border-t border-dark-700/50 flex items-end gap-2 flex-shrink-0">
+        <input
+          type="file"
+          ref={fileInputRef}
+          onChange={handleMediaUpload}
+          className="hidden"
+          accept="image/*,.pdf,.doc,.docx,.txt"
+        />
+
+        <button
+          type="button"
+          onClick={() => fileInputRef.current?.click()}
+          disabled={sending}
+          className="text-dark-100/60 hover:text-primary-400 p-2.5 rounded-xl hover:bg-dark-700 transition-colors flex-shrink-0 disabled:opacity-50"
+          title="Attach file or photo"
+        >
+          <PaperClipIcon className="w-5 h-5" />
+        </button>
+
+        <button
+          type="button"
+          onClick={toggleRecording}
+          disabled={sending}
+          className={`p-2.5 rounded-xl transition-colors flex-shrink-0 disabled:opacity-50 ${
+            recording
+              ? 'bg-red-500/20 text-red-400 animate-pulse'
+              : 'text-dark-100/60 hover:text-secondary-400 hover:bg-dark-700'
+          }`}
+          title={recording ? 'Click to stop & send voice note' : 'Record voice note'}
+        >
+          <MicrophoneIcon className="w-5 h-5" />
+        </button>
+
         <div className="flex-1 flex items-end bg-dark-700/70 border border-dark-600 rounded-2xl px-3 py-2 gap-2">
           <textarea
             ref={inputRef}
             className="flex-1 bg-transparent text-sm text-white placeholder-dark-100/40 resize-none outline-none max-h-32 min-h-[24px]"
-            placeholder={editingMsg ? 'Edit message…' : 'Type a message…'}
+            placeholder={editingMsg ? 'Edit message…' : recording ? 'Recording voice note...' : 'Type a message…'}
             value={text}
             onChange={e => { setText(e.target.value); handleTyping(); }}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMsg(); } }}

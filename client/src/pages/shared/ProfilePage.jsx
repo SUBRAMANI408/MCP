@@ -3,6 +3,7 @@ import { useAuthStore } from '../../app/store';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
 import { UserCircleIcon, PencilIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import FileUpload from '../../components/common/FileUpload';
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore();
@@ -128,9 +129,16 @@ export default function ProfilePage() {
                 onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} />
             </div>
             <div>
-              <label className="label">Avatar URL</label>
-              <input type="url" className="input" placeholder="https://example.com/avatar.jpg" value={form.avatar}
-                onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))} />
+              <label className="label">Avatar Image</label>
+              <div className="flex items-center gap-3">
+                <input type="text" className="input flex-1" placeholder="https://example.com/avatar.jpg" value={form.avatar}
+                  onChange={e => setForm(f => ({ ...f, avatar: e.target.value }))} />
+                <FileUpload
+                  folder="avatars"
+                  label="Upload Photo"
+                  onUpload={(url) => setForm(f => ({ ...f, avatar: url }))}
+                />
+              </div>
             </div>
             <div className="flex gap-3">
               <button type="button" onClick={() => setEditing(false)} className="btn-secondary flex-1">Cancel</button>

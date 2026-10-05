@@ -1,4 +1,6 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '../.env') });
+require('dotenv').config(); // Fallback to root .env if present
 require('express-async-errors');
 const express = require('express');
 const http = require('http');
@@ -66,12 +68,6 @@ app.use(cors({
 }));
 
 // Rate Limiting
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 10,
-  message: { success: false, message: 'Too many login attempts. Please wait 15 minutes.' }
-});
-
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 1000,
@@ -86,7 +82,6 @@ const generalLimiter = rateLimit({
   }
 });
 
-app.use('/api/v1/auth', authLimiter);
 app.use('/api/', generalLimiter);
 
 // Logging & Body Parsing
@@ -134,8 +129,16 @@ app.use(errorHandler);
 initSocketHandlers(io);
 
 const PORT = process.env.PORT || 5000;
-server.listen(PORT, () => {
-  console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+
+// Connect Database before accepting HTTP connections
+connectDB().then(async () => {
+  await seedAdmin();
+  server.listen(PORT, () => {
+    console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+  });
+}).catch(err => {
+  console.error('[FATAL] Failed to start server:', err);
+  process.exit(1);
 });
 
 module.exports = { app, server };
