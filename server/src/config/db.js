@@ -38,6 +38,9 @@ const connectDB = async () => {
       const { MongoMemoryServer } = require('mongodb-memory-server');
       const mongoServer = await MongoMemoryServer.create({ instance: { port: 27017, dbName: 'sports' } });
       uri = mongoServer.getUri();
+      if (!uri.includes('/sports')) {
+        uri = uri.replace(/\/?$/, '/sports');
+      }
 
       const conn = await mongoose.connect(uri);
       console.log(`[DEV] In-Memory MongoDB Connected: ${conn.connection.host}`);
