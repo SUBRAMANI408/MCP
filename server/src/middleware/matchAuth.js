@@ -21,7 +21,13 @@ exports.authorizeMatchOp = async (req, res, next) => {
       isAuthorized = true;
     }
 
-    if (!isAuthorized && match.scorerId && match.scorerId.toString() === userId) {
+    // Association Head and Tournament Organizers can operate matches in their association/tournaments
+    if (req.user && (req.user.role === 'tournament_organizer' || req.user.role === 'association_head')) {
+      isAuthorized = true;
+    }
+
+    const currentScorerId = match.scorerId?._id ? match.scorerId._id.toString() : match.scorerId ? match.scorerId.toString() : null;
+    if (!isAuthorized && currentScorerId && currentScorerId === userId) {
       isAuthorized = true;
     }
 
@@ -41,17 +47,17 @@ exports.authorizeMatchOp = async (req, res, next) => {
     }
 
     const now = new Date();
-    const isScoringRoute = req.originalUrl.includes('/scoring/') && req.method === 'POST';
+    const isScoringMutation = req.originalUrl.includes('/scoring/') && ['POST', 'PUT', 'DELETE', 'PATCH'].includes(req.method);
     
-    if (isScoringRoute && !req.originalUrl.includes('/setup') && !req.originalUrl.includes('/takeover')) {
+    if (isScoringMutation && !req.originalUrl.includes('/setup') && !req.originalUrl.includes('/takeover')) {
       if (match.status !== 'live') {
         return res.status(400).json({ success: false, message: 'Match is not live' });
       }
 
-      if (match.scorerId && match.scorerId.toString() !== userId) {
-        const lockAgeMs = match.scorerLockedAt ? now - match.scorerLockedAt : 0;
+      if (currentScorerId && currentScorerId !== userId) {
+        const lockAgeMs = match.scorerLockedAt ? now - new Date(match.scorerLockedAt) : 0;
         if (lockAgeMs < 5 * 60 * 1000) {
-          return res.status(403).json({ success: false, message: 'Scoring is currently locked to another scorer. Second device is read-only.' });
+          return res.status(403).json({ success: false, message: 'Scoring is currently locked to another scorer. Click "Take Over" or wait 5 minutes.' });
         }
       }
       

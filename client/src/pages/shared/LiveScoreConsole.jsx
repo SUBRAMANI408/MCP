@@ -632,6 +632,7 @@ export default function LiveScoreConsole() {
   const [showPOM, setShowPOM] = useState(false);
   const [showScorecard, setShowScorecard] = useState(false);
   const [isLockedByOther, setIsLockedByOther] = useState(false);
+  const [isTakingOver, setIsTakingOver] = useState(false);
 
   const loadMatch = useCallback(async () => {
     try {
@@ -640,10 +641,16 @@ export default function LiveScoreConsole() {
       setMatch(m);
 
       // Check if match is locked to another scorer within last 5 minutes
-      if (m.scorerId && user?._id && m.scorerId.toString() !== user._id.toString()) {
+      const matchScorerId = m.scorerId?._id ? m.scorerId._id.toString() : m.scorerId ? m.scorerId.toString() : null;
+      const currentUserId = user?._id?.toString();
+      if (matchScorerId && currentUserId && matchScorerId !== currentUserId) {
         if (m.scorerLockedAt && (new Date() - new Date(m.scorerLockedAt) < 5 * 60 * 1000)) {
           setIsLockedByOther(true);
+        } else {
+          setIsLockedByOther(false);
         }
+      } else {
+        setIsLockedByOther(false);
       }
     } catch { toast.error('Failed to load match'); }
     finally { setLoading(false); }
@@ -664,14 +671,26 @@ export default function LiveScoreConsole() {
     socket?.on('match:bowler_updated', (data) => {
       setMatch(prev => prev ? { ...prev, currentBowlerId: data.currentBowlerId } : prev);
     });
+    socket?.on('match:takeover', (data) => {
+      setMatch(prev => prev ? { ...prev, scorerId: data.scorerId, scorerLockedAt: data.scorerLockedAt } : prev);
+      const incomingScorerId = data.scorerId?._id ? data.scorerId._id.toString() : data.scorerId?.toString();
+      const myId = user?._id?.toString();
+      if (incomingScorerId && myId && incomingScorerId !== myId) {
+        setIsLockedByOther(true);
+        toast('Another official has taken over scoring for this match.', { icon: 'ℹ️' });
+      } else if (incomingScorerId && myId && incomingScorerId === myId) {
+        setIsLockedByOther(false);
+      }
+    });
     return () => {
       socket?.emit('match:leave', id);
       socket?.off('match:update');
       socket?.off('match:innings_switch');
       socket?.off('match:batsmen_updated');
       socket?.off('match:bowler_updated');
+      socket?.off('match:takeover');
     };
-  }, [id, socket, loadMatch]);
+  }, [id, socket, loadMatch, user?._id]);
 
   const handleCricketBall = async (payload) => {
     try {
@@ -727,13 +746,16 @@ export default function LiveScoreConsole() {
   };
 
   const handleTakeover = async () => {
+    setIsTakingOver(true);
     try {
       await api.post(`/scoring/${id}/takeover`);
       setIsLockedByOther(false);
-      toast.success('You have taken over active scoring session');
-      loadMatch();
+      toast.success('You have taken over the active scoring session');
+      await loadMatch();
     } catch (err) {
       toast.error(err.response?.data?.message || 'Failed to take over scoring');
+    } finally {
+      setIsTakingOver(false);
     }
   };
 
@@ -803,13 +825,24 @@ export default function LiveScoreConsole() {
     <div className="min-h-screen bg-dark-900 p-4 max-w-2xl mx-auto">
       {/* Read-Only Lock Banner */}
       {isLockedByOther && (
-        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 mb-4 flex items-center justify-between gap-3">
+        <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-xl p-3 mb-4 flex items-center justify-between gap-3 shadow-lg">
           <div className="flex items-center gap-2 text-yellow-300 text-xs">
             <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0" />
             <span>Scoring is locked to another official. This device is in Read-Only mode.</span>
           </div>
-          <button onClick={handleTakeover} className="btn-secondary text-xs py-1.5 px-3 flex-shrink-0 font-semibold">
-            Take Over
+          <button
+            onClick={handleTakeover}
+            disabled={isTakingOver}
+            className="btn-primary text-xs py-1.5 px-3.5 flex-shrink-0 font-bold shadow-md hover:scale-105 transition-all flex items-center gap-1.5"
+          >
+            {isTakingOver ? (
+              <>
+                <div className="animate-spin w-3 h-3 border-2 border-white border-t-transparent rounded-full" />
+                <span>Taking Over...</span>
+              </>
+            ) : (
+              <span>Take Over</span>
+            )}
           </button>
         </div>
       )}

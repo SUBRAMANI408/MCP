@@ -273,7 +273,16 @@ exports.takeoverScoring = async (req, res) => {
   match.scorerLockedAt = new Date();
   await match.save();
 
-  successResponse(res, { scorerId: match.scorerId }, 'Successfully taken over scoring');
+  const io = req.app.get('io');
+  if (io) {
+    io.to(`match:${match._id}`).emit('match:takeover', {
+      matchId: match._id,
+      scorerId: match.scorerId,
+      scorerLockedAt: match.scorerLockedAt
+    });
+  }
+
+  successResponse(res, { scorerId: match.scorerId, scorerLockedAt: match.scorerLockedAt }, 'Successfully taken over scoring');
 };
 
 const { generateCricketScorecard } = require('../utils/scorecardGenerator');
