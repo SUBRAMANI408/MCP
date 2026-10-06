@@ -17,7 +17,10 @@ const auditLogSchema = new mongoose.Schema({
       'fund_created', 'fund_approved',
       'system_config_updated',
       'feedback_replied', 'feedback_resolved',
-      'force_logout', 'account_locked', 'account_unlocked'
+      'force_logout', 'account_locked', 'account_unlocked',
+      'expense_requested', 'expense_approved', 'expense_rejected', 'expense_paid',
+      'team_approved', 'team_rejected', 'team_suspended', 'team_reactivated', 'team_corrections_requested',
+      'user_locked', 'user_unlocked'
     ]
   },
   performedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },

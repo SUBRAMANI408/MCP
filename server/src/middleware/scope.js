@@ -72,9 +72,25 @@ const docAssociationGuard = (Model, idParam = 'id', assocField = 'associationId'
     if (!id) return next();
 
     try {
-      const doc = await Model.findById(id).select(assocField);
+      const doc = await Model.findById(id);
       if (!doc) return res.status(404).json({ success: false, message: 'Resource not found' });
-      const assocId = doc[assocField];
+      let assocId = doc[assocField];
+      if (!assocId && doc.groundId) {
+        const Ground = require('../models/Ground');
+        const ground = await Ground.findById(doc.groundId).select('associationId');
+        if (ground) assocId = ground.associationId;
+      }
+      if (!assocId && doc.tournamentId) {
+        const Tournament = require('../models/Tournament');
+        const tournament = await Tournament.findById(doc.tournamentId).select('associationId');
+        if (tournament) assocId = tournament.associationId;
+      }
+      if (!assocId && doc.teamId) {
+        const Team = require('../models/Team');
+        const team = await Team.findById(doc.teamId).select('associationId');
+        if (team) assocId = team.associationId;
+      }
+
       if (assocId && denyIfCrossTenant(assocId, req.user, res)) {
         return;
       }

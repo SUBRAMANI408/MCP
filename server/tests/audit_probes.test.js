@@ -151,6 +151,37 @@ describe('Re-Audit Regression Suite — Digital Sports Association Platform', ()
       const crossReports = await apiRequest(`/funds/${assocAId}/reports`, 'GET', null, bToken);
       assert.equal(crossReports.status, 403, 'Cross-tenant financial reports access must return 403 Forbidden');
     });
+
+    test('Table-driven write isolation: Officer from Assoc B receives 403 on Assoc A write routes', async () => {
+      const uniqueSuffix = Date.now();
+      const officerEmail = `funds.b2.${uniqueSuffix}@sports.com`;
+
+      await apiRequest(`/associations/${assocBId}/funds-officers`, 'POST', {
+        name: `Funds Officer B2 ${uniqueSuffix}`,
+        email: officerEmail,
+        password: 'password123',
+      }, adminToken);
+
+      const bLogin = await apiRequest('/auth/login', 'POST', {
+        email: officerEmail,
+        password: 'password123',
+      });
+      const bToken = bLogin.data.data.token;
+
+      const writeEndpoints = [
+        { method: 'PUT', path: `/associations/${assocAId}`, body: { name: 'Hacked Association' } },
+        { method: 'POST', path: `/associations/${assocAId}/organizers`, body: { name: 'Attacker', email: `att.${uniqueSuffix}@test.com` } },
+        { method: 'POST', path: `/associations/${assocAId}/ground-officers`, body: { name: 'Attacker', email: `att_g.${uniqueSuffix}@test.com` } },
+        { method: 'POST', path: `/associations/${assocAId}/funds-officers`, body: { name: 'Attacker', email: `att_f.${uniqueSuffix}@test.com` } },
+        { method: 'GET', path: `/associations/${assocAId}/dashboard`, body: null },
+        { method: 'GET', path: `/associations/${assocAId}/members`, body: null },
+      ];
+
+      for (const endpoint of writeEndpoints) {
+        const res = await apiRequest(endpoint.path, endpoint.method, endpoint.body, bToken);
+        assert.equal(res.status, 403, `Cross-tenant probe ${endpoint.method} ${endpoint.path} must return 403 Forbidden (got ${res.status})`);
+      }
+    });
   });
 
   describe('3. Match Operation & Scoring Rules (§3.2)', () => {
@@ -220,4 +251,22 @@ describe('Re-Audit Regression Suite — Digital Sports Association Platform', ()
     });
   });
 
+  describe('5. Player Performance Metrics & Leaderboards', () => {
+    test('GET /players/:id/stats and /players/leaderboards return structured data', async () => {
+      const userRes = await apiRequest('/auth/me', 'GET', null, adminToken);
+      assert.equal(userRes.status, 200);
+      const userId = userRes.data.data._id;
+
+      const statsRes = await apiRequest(`/players/${userId}/stats`, 'GET', null, adminToken);
+      assert.equal(statsRes.status, 200);
+      assert.ok(statsRes.data.data.stats, 'Stats payload must exist');
+
+      const lbRes = await apiRequest('/players/leaderboards', 'GET', null, adminToken);
+      assert.equal(lbRes.status, 200);
+      assert.ok(Array.isArray(lbRes.data.data.topRunScorers), 'topRunScorers must be array');
+      assert.ok(Array.isArray(lbRes.data.data.topWicketTakers), 'topWicketTakers must be array');
+    });
+  });
+
 });
+

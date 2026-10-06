@@ -1,0 +1,52 @@
+name: CI Test Suite & Build Verification
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test-server:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: server/package.json
+
+      - name: Install server dependencies
+        run: cd server && npm install
+
+      - name: Start server in background for testing
+        run: |
+          cd server
+          NODE_ENV=development ALLOW_MEMORY_DB=true node src/index.js &
+          sleep 5
+
+      - name: Run server regression tests
+        run: cd server && npm test
+
+  build-client:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: client/package.json
+
+      - name: Install client dependencies
+        run: cd client && npm install
+
+      - name: Build client assets
+        run: cd client && npm run build

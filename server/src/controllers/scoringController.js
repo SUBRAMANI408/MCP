@@ -97,8 +97,23 @@ exports.cricketBall = async (req, res) => {
     inning.extras.total = (inning.extras.total || 0) + (extraRuns || 1);
   }
 
+  // Consecutive overs rule check
+  const activeBowler = bowlerId || match.currentBowlerId;
+  if (match.previousBowlerId && activeBowler && match.previousBowlerId.toString() === activeBowler.toString()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Rule violation: Same bowler cannot bowl consecutive overs'
+    });
+  }
+  if (bowlerId) match.currentBowlerId = bowlerId;
+
   if (isLegalBall) {
-    inning.overs = parseFloat(((currentBalls + 1) / 6).toFixed(1));
+    const legalBalls = inning.balls.filter(b => !b.extraType || b.extraType === 'bye' || b.extraType === 'leg_bye').length;
+    inning.overs = parseFloat((Math.floor(legalBalls / 6) + (legalBalls % 6) / 10).toFixed(1));
+    if (legalBalls > 0 && legalBalls % 6 === 0) {
+      match.previousBowlerId = activeBowler || null;
+      match.currentBowlerId = null;
+    }
   }
 
   // Update score summary
@@ -148,6 +163,8 @@ exports.switchInnings = async (req, res) => {
   }
 
   match.currentInning = (match.currentInning || 0) + 1;
+  match.previousBowlerId = null;
+  match.currentBowlerId = null;
   match.markModified('innings');
   await match.save();
 
@@ -359,6 +376,12 @@ exports.undoLastBall = async (req, res) => {
     ...match.scoreSummary,
     [teamKey]: totalRuns,
   };
+
+  const isRemovedLegal = !removedBall.extraType || removedBall.extraType === 'bye' || removedBall.extraType === 'leg_bye';
+  if (isRemovedLegal && (legalBalls + 1) % 6 === 0) {
+    match.currentBowlerId = match.previousBowlerId;
+    match.previousBowlerId = null;
+  }
 
   match.markModified('innings');
   match.markModified('scoreSummary');

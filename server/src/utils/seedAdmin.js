@@ -2,6 +2,8 @@ const User = require('../models/User');
 
 const seedAdmin = async () => {
   try {
+    // Backfill: Remove explicit null username values to preserve sparse unique index
+    await User.updateMany({ username: null }, { $unset: { username: 1 } });
     if (process.env.NODE_ENV === 'production') {
       const email = process.env.ADMIN_EMAIL;
       const password = process.env.ADMIN_PASSWORD;

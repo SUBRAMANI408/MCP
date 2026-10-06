@@ -102,7 +102,8 @@ exports.createOrganizer = async (req, res) => {
   const { id: associationId } = req.params;
   const user = await User.create({
     name, email, passwordHash: password || 'Organizer@123',
-    role: 'tournament_organizer', associationId, phone, username: username || null,
+    role: 'tournament_organizer', associationId, phone,
+    ...(username ? { username } : {}),
     status: 'active'
   });
   await Group.findOneAndUpdate({ type: 'association', refId: associationId }, { $addToSet: { members: user._id } });
@@ -114,7 +115,8 @@ exports.createGroundOfficer = async (req, res) => {
   const { id: associationId } = req.params;
   const user = await User.create({
     name, email, passwordHash: password || 'Officer@123',
-    role: 'ground_officer', associationId, phone, username: username || null,
+    role: 'ground_officer', associationId, phone,
+    ...(username ? { username } : {}),
     status: 'active'
   });
   await Group.findOneAndUpdate({ type: 'association', refId: associationId }, { $addToSet: { members: user._id } });
@@ -126,7 +128,8 @@ exports.createFundsOfficer = async (req, res) => {
   const { id: associationId } = req.params;
   const user = await User.create({
     name, email, passwordHash: password || 'Funds@123',
-    role: 'funds_officer', associationId, phone, username: username || null,
+    role: 'funds_officer', associationId, phone,
+    ...(username ? { username } : {}),
     status: 'active'
   });
   await Group.findOneAndUpdate({ type: 'association', refId: associationId }, { $addToSet: { members: user._id } });

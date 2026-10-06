@@ -1,6 +1,8 @@
 const express = require('express');
 const router = express.Router();
 const { authenticate, authorize } = require('../middleware/auth');
+const { docAssociationGuard } = require('../middleware/scope');
+const Booking = require('../models/Booking');
 const { body } = require('express-validator');
 const validate = require('../middleware/validate');
 const {
@@ -34,9 +36,9 @@ router.get('/', getBookings);
 router.get('/calendar', getCalendar);
 router.get('/reports', authorize('admin', 'association_head', 'ground_officer'), getBookingReports);
 router.get('/:id', getBooking);
-router.put('/:id/approve', authorize('ground_officer', 'admin', 'association_head'), approveBooking);
-router.put('/:id/reject', authorize('ground_officer', 'admin', 'association_head'), rejectBooking);
-router.put('/:id/reschedule', authorize('ground_officer', 'admin', 'captain', 'vice_captain'), rescheduleBooking);
-router.post('/:id/propose-alternate', authorize('ground_officer', 'admin'), proposeAlternateSlot);
+router.put('/:id/approve', authorize('ground_officer', 'admin', 'association_head'), docAssociationGuard(Booking, 'id'), approveBooking);
+router.put('/:id/reject', authorize('ground_officer', 'admin', 'association_head'), docAssociationGuard(Booking, 'id'), rejectBooking);
+router.put('/:id/reschedule', authorize('ground_officer', 'admin', 'captain', 'vice_captain'), docAssociationGuard(Booking, 'id'), rescheduleBooking);
+router.post('/:id/propose-alternate', authorize('ground_officer', 'admin'), docAssociationGuard(Booking, 'id'), proposeAlternateSlot);
 
 module.exports = router;

@@ -39,6 +39,7 @@ const searchRoutes = require('./routes/search');
 const uploadRoutes = require('./routes/uploads');
 const paymentRoutes = require('./routes/payments');
 const expenseRoutes = require('./routes/expenses');
+const playerRoutes = require('./routes/players');
 
 const app = express();
 const server = http.createServer(app);
@@ -54,11 +55,6 @@ const io = new Server(server, {
 
 // Attach io to app for use in controllers
 app.set('io', io);
-
-// Connect Database
-connectDB().then(() => {
-  seedAdmin();
-});
 
 // Security Middleware
 app.use(helmet());
@@ -116,6 +112,7 @@ app.use('/api/v1/search', searchRoutes);
 app.use('/api/v1/uploads', uploadRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/expenses', expenseRoutes);
+app.use('/api/v1/players', playerRoutes);
 
 // 404 handler
 app.use((req, res) => {
