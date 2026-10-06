@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { tournamentApi } from '../../api/tournamentApi';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 export default function FixtureManager() {
   const { id } = useParams();
@@ -42,17 +43,20 @@ export default function FixtureManager() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="section-title gradient-text">Fixture & Match Manager</h1>
-          <p className="text-dark-100/60 text-sm mt-1">Generate round robin or knockout brackets and schedule times/locations</p>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(`/tournament/${id}`)} className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold" title="Go Back">
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="section-title gradient-text">Fixture & Match Manager</h1>
+            <p className="text-dark-100/60 text-sm mt-1">Generate round robin or knockout brackets and schedule times/locations</p>
+          </div>
         </div>
         
         <div className="flex gap-2">
           <button onClick={handleGenerate} disabled={generating} className="btn-primary">
             {generating ? 'Building matches...' : 'Generate Match Brackets'}
-          </button>
-          <button onClick={() => navigate(`/tournament/${id}`)} className="btn-secondary">
-            Back Details
           </button>
         </div>
       </div>

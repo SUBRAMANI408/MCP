@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { tournamentApi } from '../../api/tournamentApi';
 import toast from 'react-hot-toast';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 export default function TournamentDetails() {
   const { id } = useParams();
@@ -61,15 +62,24 @@ export default function TournamentDetails() {
   );
 
   if (!tournament) return (
-    <div className="card text-center py-12 text-dark-100/50">Tournament details not found</div>
+    <div className="card text-center py-12 text-dark-100/50">
+      <p>Tournament details not found</p>
+      <button onClick={() => navigate(-1)} className="btn-secondary mt-4">Go Back</button>
+    </div>
   );
 
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="section-title gradient-text">{tournament.name}</h1>
-          <p className="text-dark-100/60 text-sm mt-1">Configure status levels, audit team rosters, and manage brackets</p>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(-1)} className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold" title="Go Back">
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="section-title gradient-text">{tournament.name}</h1>
+            <p className="text-dark-100/60 text-sm mt-1">Configure status levels, audit team rosters, and manage brackets</p>
+          </div>
         </div>
         
         <div className="flex gap-2">

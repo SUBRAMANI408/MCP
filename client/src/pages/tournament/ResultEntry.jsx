@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { tournamentApi } from '../../api/tournamentApi';
 import { fixtureApi } from '../../api/fixtureApi';
 import toast from 'react-hot-toast';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 export default function ResultEntry() {
   const { id } = useParams();
@@ -65,13 +66,16 @@ export default function ResultEntry() {
   return (
     <div className="space-y-6 animate-fade-in">
       <div className="page-header">
-        <div>
-          <h1 className="section-title gradient-text">Scorecard Result Entry</h1>
-          <p className="text-dark-100/60 text-sm mt-1">Submit official match summaries, scorecards, and verify tournament winners</p>
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate(`/tournament/${id}/fixtures`)} className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold" title="Go Back">
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="section-title gradient-text">Scorecard Result Entry</h1>
+            <p className="text-dark-100/60 text-sm mt-1">Submit official match summaries, scorecards, and verify tournament winners</p>
+          </div>
         </div>
-        <button onClick={() => navigate(`/tournament/${id}/fixtures`)} className="btn-secondary">
-          Back Fixtures
-        </button>
       </div>
 
       <div className="card">

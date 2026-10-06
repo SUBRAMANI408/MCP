@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useSocket } from '../../context/SocketContext';
-import { TrophyIcon, SignalIcon } from '@heroicons/react/24/outline';
+import { useAuthStore } from '../../app/store';
+import { getDashboardRoute } from '../../utils/permissions';
+import { TrophyIcon, SignalIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 
 const formatOvers = (balls) => `${Math.floor(balls / 6)}.${balls % 6}`;
 
@@ -12,8 +14,21 @@ function CricketScorecard({ match }) {
   const inning1 = match.innings?.[0];
   const inning2 = match.innings?.[1];
 
-  const teamAScore = match.scoreSummary?.teamA;
-  const teamBScore = match.scoreSummary?.teamB;
+  // Helper to derive score from inning if scoreSummary is empty
+  const getInningScoreForTeam = (teamId) => {
+    if (!teamId) return null;
+    const inn = match.innings?.find(i => i.battingTeamId?.toString() === teamId?.toString());
+    if (!inn) return null;
+    const ov = inn.overs !== undefined && inn.overs !== null ? inn.overs : formatOvers(inn.balls?.length || 0);
+    return {
+      runs: inn.totalRuns || 0,
+      wickets: inn.wickets || 0,
+      overs: ov,
+    };
+  };
+
+  const teamAScore = match.scoreSummary?.teamA || getInningScoreForTeam(match.teamA?._id || match.teamA);
+  const teamBScore = match.scoreSummary?.teamB || getInningScoreForTeam(match.teamB?._id || match.teamB);
 
   // Get over summary (last 6 balls of each over)
   const getOverSummary = (balls) => {
@@ -59,7 +74,7 @@ function CricketScorecard({ match }) {
         {inning && !inning.completed && (
           <div className="bg-dark-900/50 rounded-xl px-4 py-2 text-center">
             <p className="text-xs text-dark-100/50">
-              Inning {(match.currentInning || 0) + 1} • {formatOvers(inning.balls?.length || 0)} / {match.totalOvers} overs
+              Inning {(match.currentInning || 0) + 1} • {inning.overs || formatOvers(inning.balls?.length || 0)} / {match.totalOvers} overs
             </p>
           </div>
         )}
@@ -277,6 +292,17 @@ export default function LiveScoreView() {
     };
   }, [id, socket, loadMatch]);
 
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(getDashboardRoute(user?.role));
+    }
+  };
+
   if (loading) return (
     <div className="flex items-center justify-center h-64">
       <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full" />
@@ -284,26 +310,49 @@ export default function LiveScoreView() {
   );
 
   if (!match) return (
-    <div className="text-center py-12 text-dark-100/50">Match not found</div>
+    <div className="text-center py-12 text-dark-100/50">
+      <p>Match not found</p>
+      <button onClick={handleBack} className="btn-secondary mt-4">
+        Go Back
+      </button>
+    </div>
   );
 
   return (
     <div className="max-w-2xl mx-auto space-y-4 animate-fade-in p-4">
-      {/* Status bar */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          {match.status === 'live' ? (
-            <span className="badge-live badge flex items-center gap-1">
-              <SignalIcon className="w-3 h-3" /> LIVE
-            </span>
-          ) : (
-            <span className={`badge ${match.status === 'completed' ? 'badge-success' : 'badge-pending'} capitalize`}>{match.status}</span>
-          )}
-          <span className="text-xs text-dark-100/50 capitalize">{match.sport} • {match.type}</span>
+      {/* Top Navigation & Status bar */}
+      <div className="flex items-center justify-between pb-1 border-b border-dark-700/40">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleBack}
+            className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold"
+            title="Go Back"
+          >
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div className="flex items-center gap-2">
+            {match.status === 'live' ? (
+              <span className="badge-live badge flex items-center gap-1">
+                <SignalIcon className="w-3 h-3" /> LIVE
+              </span>
+            ) : (
+              <span className={`badge ${match.status === 'completed' ? 'badge-success' : 'badge-pending'} capitalize`}>{match.status}</span>
+            )}
+            <span className="text-xs text-dark-100/50 capitalize">{match.sport} • {match.type}</span>
+          </div>
         </div>
-        {lastUpdate && (
-          <span className="text-xs text-dark-100/30">Updated {lastUpdate.toLocaleTimeString()}</span>
-        )}
+        <div className="flex items-center gap-3">
+          {lastUpdate && (
+            <span className="text-xs text-dark-100/30">Updated {lastUpdate.toLocaleTimeString()}</span>
+          )}
+          <button
+            onClick={() => navigate(getDashboardRoute(user?.role))}
+            className="text-xs text-primary-400 hover:text-primary-300 font-medium transition-colors"
+          >
+            Dashboard
+          </button>
+        </div>
       </div>
 
       {/* Sport-specific scorecard */}

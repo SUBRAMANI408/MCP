@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../app/store';
+import { getDashboardRoute } from '../../utils/permissions';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
-import { UserCircleIcon, PencilIcon, LockClosedIcon } from '@heroicons/react/24/outline';
+import { UserCircleIcon, PencilIcon, LockClosedIcon, ArrowLeftIcon } from '@heroicons/react/24/outline';
 import FileUpload from '../../components/common/FileUpload';
 
 export default function ProfilePage() {
+  const navigate = useNavigate();
   const { user, setUser } = useAuthStore();
   const [editing, setEditing] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -17,6 +20,14 @@ export default function ProfilePage() {
   const [pwForm, setPwForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [changingPw, setChangingPw] = useState(false);
   const [showPwSection, setShowPwSection] = useState(false);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(getDashboardRoute(user?.role));
+    }
+  };
 
   const handleSave = async (e) => {
     e.preventDefault();
@@ -70,11 +81,23 @@ export default function ProfilePage() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-xl mx-auto">
-      <div className="page-header">
-        <div>
-          <h1 className="section-title gradient-text">My Profile</h1>
-          <p className="text-dark-100/60 text-sm mt-1">Manage your personal information and security settings</p>
+      <div className="flex items-center justify-between gap-3 pb-2 border-b border-dark-700/40">
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold" title="Go Back">
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="section-title gradient-text text-xl">My Profile</h1>
+            <p className="text-dark-100/60 text-xs">Manage your personal information and security settings</p>
+          </div>
         </div>
+        <button
+          onClick={() => navigate(getDashboardRoute(user?.role))}
+          className="text-xs text-primary-400 hover:text-primary-300 font-medium transition-colors"
+        >
+          Dashboard
+        </button>
       </div>
 
       {/* Profile Card */}

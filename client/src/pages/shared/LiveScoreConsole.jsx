@@ -3,11 +3,13 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import { useSocket } from '../../context/SocketContext';
 import { useAuthStore } from '../../app/store';
+import { getDashboardRoute } from '../../utils/permissions';
 import toast from 'react-hot-toast';
 import {
   PlayIcon, StopIcon, TrophyIcon, UserIcon,
   CheckCircleIcon, XMarkIcon, ArrowPathRoundedSquareIcon,
-  ArrowUturnLeftIcon, ExclamationTriangleIcon, TableCellsIcon
+  ArrowUturnLeftIcon, ExclamationTriangleIcon, TableCellsIcon,
+  ArrowLeftIcon
 } from '@heroicons/react/24/outline';
 
 // ─── Full Scorecard Modal ──────────────────────────────────────────────────
@@ -813,13 +815,26 @@ export default function LiveScoreConsole() {
       )}
 
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h1 className="font-bold text-white text-lg">{match.teamA?.name} vs {match.teamB?.name}</h1>
-          <div className="flex items-center gap-2 mt-0.5">
-            <span className="badge-live badge text-xs">● LIVE</span>
-            <span className="text-xs text-dark-100/50 capitalize">{match.sport} • {match.type}</span>
-            {match.groundId && <span className="text-xs text-dark-100/40">📍 {match.groundId?.name}</span>}
+      <div className="flex items-center justify-between mb-4 pb-2 border-b border-dark-700/40">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => {
+              if (window.history.length > 1) navigate(-1);
+              else navigate(getDashboardRoute(user?.role));
+            }}
+            className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold"
+            title="Go Back"
+          >
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="font-bold text-white text-lg">{match.teamA?.name} vs {match.teamB?.name}</h1>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="badge-live badge text-xs">● LIVE</span>
+              <span className="text-xs text-dark-100/50 capitalize">{match.sport} • {match.type}</span>
+              {match.groundId && <span className="text-xs text-dark-100/40">📍 {match.groundId?.name}</span>}
+            </div>
           </div>
         </div>
         <div className="flex items-center gap-2">

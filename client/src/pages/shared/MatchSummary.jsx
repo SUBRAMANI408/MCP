@@ -2,13 +2,24 @@ import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { useAuthStore } from '../../app/store';
+import { getDashboardRoute } from '../../utils/permissions';
 import { ArrowLeftIcon, TrophyIcon, MapPinIcon, CalendarDaysIcon } from '@heroicons/react/24/outline';
 
 export default function MatchSummary() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuthStore();
   const [match, setMatch] = useState(null);
   const [loading, setLoading] = useState(true);
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(getDashboardRoute(user?.role));
+    }
+  };
 
   useEffect(() => {
     api.get(`/matches/${id}/summary`)
@@ -24,7 +35,10 @@ export default function MatchSummary() {
   );
 
   if (!match) return (
-    <div className="card text-center py-12 text-dark-100/50">Match not found.</div>
+    <div className="card text-center py-12 text-dark-100/50">
+      <p>Match not found.</p>
+      <button onClick={handleBack} className="btn-secondary mt-4">Go Back</button>
+    </div>
   );
 
   const scoreA = match.scoreSummary?.teamA ?? 0;
@@ -33,14 +47,23 @@ export default function MatchSummary() {
 
   return (
     <div className="space-y-6 animate-fade-in max-w-2xl mx-auto">
-      <div className="flex items-center gap-3">
-        <button onClick={() => navigate(-1)} className="btn-ghost p-2">
-          <ArrowLeftIcon className="w-5 h-5" />
-        </button>
-        <div>
-          <h1 className="section-title gradient-text">Match Summary</h1>
-          <p className="text-dark-100/60 text-xs">Final result and event log</p>
+      <div className="flex items-center justify-between gap-3 pb-2 border-b border-dark-700/40">
+        <div className="flex items-center gap-3">
+          <button onClick={handleBack} className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold" title="Go Back">
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="section-title gradient-text text-xl">Match Summary</h1>
+            <p className="text-dark-100/60 text-xs">Final result and event log</p>
+          </div>
         </div>
+        <button
+          onClick={() => navigate(getDashboardRoute(user?.role))}
+          className="text-xs text-primary-400 hover:text-primary-300 font-medium transition-colors"
+        >
+          Dashboard
+        </button>
       </div>
 
       {/* Final Score Card */}

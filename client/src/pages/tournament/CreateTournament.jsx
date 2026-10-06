@@ -3,6 +3,7 @@ import { tournamentApi } from '../../api/tournamentApi';
 import api from '../../api/axios';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
+import { ArrowLeftIcon } from '@heroicons/react/24/outline';
 import FileUpload from '../../components/common/FileUpload';
 
 export default function CreateTournament() {
@@ -73,9 +74,15 @@ export default function CreateTournament() {
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl mx-auto">
       <div className="page-header">
-        <div>
-          <h1 className="section-title gradient-text">Create Tournament</h1>
-          <p className="text-dark-100/60 text-sm mt-1">Configure registrations, match formatting brackets, and timelines</p>
+        <div className="flex items-center gap-3">
+          <button type="button" onClick={() => navigate('/tournament/dashboard')} className="btn-secondary p-2 rounded-xl text-dark-100/80 hover:text-white transition-all flex items-center gap-1.5 text-xs font-semibold" title="Go Back">
+            <ArrowLeftIcon className="w-4 h-4" />
+            <span>Back</span>
+          </button>
+          <div>
+            <h1 className="section-title gradient-text">Create Tournament</h1>
+            <p className="text-dark-100/60 text-sm mt-1">Configure registrations, match formatting brackets, and timelines</p>
+          </div>
         </div>
       </div>
 

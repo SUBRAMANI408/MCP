@@ -32,7 +32,9 @@ exports.getMatch = async (req, res) => {
     .populate('teamA', 'name sport logo captainId')
     .populate('teamB', 'name sport logo captainId')
     .populate('groundId', 'name location')
-    .populate('scorerId', 'name');
+    .populate('scorerId', 'name')
+    .populate('tossWinner', 'name')
+    .populate('playerOfMatchId', 'name');
   if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
   successResponse(res, match);
 };
@@ -41,7 +43,9 @@ exports.getMatchSummary = async (req, res) => {
   const match = await Match.findById(req.params.id)
     .populate('teamA', 'name sport logo')
     .populate('teamB', 'name sport logo')
-    .populate('groundId', 'name');
+    .populate('groundId', 'name')
+    .populate('tossWinner', 'name')
+    .populate('playerOfMatchId', 'name');
   if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
   successResponse(res, { match, events: match.events, scoreSummary: match.scoreSummary });
 };
