@@ -5,6 +5,7 @@ const { body } = require('express-validator');
 const validate = require('../middleware/validate');
 const {
   createSport,
+  seedDefaultSports,
   getSports,
   getSport,
   updateSport,
@@ -18,6 +19,7 @@ router.use(authenticate);
 router.post('/', authorize('admin'), [
   body('name').notEmpty().trim(),
 ], validate, createSport);
+router.post('/seed', authorize('admin'), seedDefaultSports);
 router.get('/', getSports);
 router.get('/:id', getSport);
 router.put('/:id', authorize('admin'), updateSport);

@@ -1,23 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import api from '../../api/axios';
 import toast from 'react-hot-toast';
+import { PlusIcon, ArrowPathIcon, TrophyIcon, SparklesIcon } from '@heroicons/react/24/outline';
 
 const PREDEFINED_SPORTS = [
-  { name: 'Football', icon: '⚽' },
-  { name: 'Basketball', icon: '🏀' },
-  { name: 'Cricket', icon: '🏏' },
-  { name: 'Tennis', icon: '🎾' },
-  { name: 'Volleyball', icon: '🏐' },
-  { name: 'Baseball', icon: '⚾' },
-  { name: 'Rugby', icon: '🏉' },
-  { name: 'Hockey', icon: '🏑' },
-  { name: 'Table Tennis', icon: '🏓' },
-  { name: 'Badminton', icon: '🏸' },
-  { name: 'Golf', icon: '⛳' },
-  { name: 'Swimming', icon: '🏊' },
-  { name: 'Athletics', icon: '🏃' },
-  { name: 'Boxing', icon: '🥊' },
-  { name: 'Cycling', icon: '🚴' },
+  { name: 'Cricket', icon: '🏏', rules: 'Runs, wickets, balls, overs' },
+  { name: 'Football', icon: '⚽', rules: 'Goals, fouls, cards' },
+  { name: 'Basketball', icon: '🏀', rules: 'Points, rebounds, assists' },
+  { name: 'Volleyball', icon: '🏐', rules: 'Sets won, aces, blocks' },
+  { name: 'Tennis', icon: '🎾', rules: 'Sets, games, tiebreaks' },
+  { name: 'Badminton', icon: '🏸', rules: 'Sets won, smash points' },
+  { name: 'Table Tennis', icon: '🏓', rules: 'Games won, rally points' },
+  { name: 'Hockey', icon: '🏑', rules: 'Goals, penalty corners' },
+  { name: 'Baseball', icon: '⚾', rules: 'Runs, hits, innings' },
+  { name: 'Rugby', icon: '🏉', rules: 'Tries, conversions, penalties' },
+  { name: 'Swimming', icon: '🏊', rules: 'Lap times, finishing rank' },
+  { name: 'Athletics', icon: '🏃', rules: 'Event timings, finish position' },
+  { name: 'Boxing', icon: '🥊', rules: 'Rounds won, knockouts' },
+  { name: 'Golf', icon: '⛳', rules: 'Holes completed, total strokes' },
+  { name: 'Cycling', icon: '🚴', rules: 'Lap times, split seconds' },
 ];
 
 export default function ManageSports() {
@@ -32,6 +33,8 @@ export default function ManageSports() {
   const [isActive, setIsActive] = useState(true);
   const [fields, setFields] = useState([]);
   const [rules, setRules] = useState('');
+  const [search, setSearch] = useState('');
+  const [seeding, setSeeding] = useState(false);
 
   const handleNameChange = (e) => {
     const newName = e.target.value;
@@ -54,6 +57,34 @@ export default function ManageSports() {
       .then(res => setSports(res.data.data))
       .catch(() => toast.error('Failed to load sports list'))
       .finally(() => setLoading(false));
+  };
+
+  const handleSeedDefaults = async () => {
+    setSeeding(true);
+    try {
+      const res = await api.post('/sports/seed');
+      setSports(res.data.data || []);
+      toast.success('Default sports seeded successfully!');
+    } catch {
+      toast.error('Failed to populate sports');
+    } finally {
+      setSeeding(false);
+    }
+  };
+
+  const handleQuickAdd = async (preSport) => {
+    try {
+      await api.post('/sports', {
+        name: preSport.name,
+        icon: preSport.icon,
+        isActive: true,
+        scoringSchema: { rules: preSport.rules || '', fields: [] }
+      });
+      toast.success(`${preSport.name} added!`);
+      loadSports();
+    } catch (err) {
+      toast.error(err.response?.data?.message || `Failed to add ${preSport.name}`);
+    }
   };
 
   const handleOpenCreate = () => {
@@ -143,16 +174,64 @@ export default function ManageSports() {
     }
   };
 
+  const filteredSports = sports.filter(s =>
+    s.name?.toLowerCase().includes(search.toLowerCase())
+  );
+
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="page-header">
+      <div className="page-header flex flex-wrap items-center justify-between gap-4">
         <div>
           <h1 className="section-title gradient-text">Sports Master List</h1>
-          <p className="text-dark-100/60 text-sm mt-1">Configure sports details and custom match scoring schemas</p>
+          <p className="text-dark-100/60 text-sm mt-1">Configure sports details, scoring systems, and active sports in the platform</p>
         </div>
-        <button onClick={handleOpenCreate} className="btn-primary">
-          Add Sport
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={handleSeedDefaults}
+            disabled={seeding}
+            className="btn-secondary flex items-center gap-2 text-xs py-2.5 px-3.5"
+            title="Populate standard international sports"
+          >
+            <SparklesIcon className="w-4 h-4 text-accent-400" />
+            <span>{seeding ? 'Populating...' : 'Auto-Populate Sports'}</span>
+          </button>
+          <button onClick={handleOpenCreate} className="btn-primary flex items-center gap-1.5 py-2.5 px-4 text-xs">
+            <PlusIcon className="w-4 h-4" />
+            <span>Add Sport</span>
+          </button>
+        </div>
+      </div>
+
+      {/* Search and Quick Preset Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-3 card-sm bg-dark-900/60 p-3 border border-dark-700/50">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
+          <input
+            type="text"
+            className="input text-xs py-2 pl-3"
+            placeholder="Search sports by name..."
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+          />
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="text-[11px] text-dark-100/40 uppercase tracking-wider font-semibold mr-1">Quick Add:</span>
+          {PREDEFINED_SPORTS.slice(0, 8).map(ps => {
+            const alreadyExists = sports.some(s => s.name.toLowerCase() === ps.name.toLowerCase());
+            if (alreadyExists) return null;
+            return (
+              <button
+                key={ps.name}
+                onClick={() => handleQuickAdd(ps)}
+                className="bg-dark-800 hover:bg-dark-700 border border-dark-700/70 hover:border-primary-500/50 text-white rounded-lg px-2.5 py-1 text-xs transition-all flex items-center gap-1"
+                title={`Quick add ${ps.name}`}
+              >
+                <span>{ps.icon}</span>
+                <span>{ps.name}</span>
+                <span className="text-primary-400 font-bold">+</span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       <div className="card">
@@ -160,8 +239,27 @@ export default function ManageSports() {
           <div className="flex justify-center py-12">
             <div className="animate-spin w-8 h-8 border-2 border-primary-500 border-t-transparent rounded-full" />
           </div>
-        ) : sports.length === 0 ? (
-          <p className="text-center py-12 text-dark-100/50">No sports registered in the system</p>
+        ) : filteredSports.length === 0 ? (
+          <div className="text-center py-12 space-y-4 max-w-md mx-auto">
+            <div className="w-16 h-16 rounded-2xl bg-dark-800 border border-dark-700/60 flex items-center justify-center mx-auto text-3xl">
+              🏆
+            </div>
+            <div>
+              <h3 className="font-bold text-white text-base">No sports registered yet</h3>
+              <p className="text-xs text-dark-100/50 mt-1">
+                {search ? 'No sports matched your search query.' : 'Initialize default sports catalog (Cricket, Football, Basketball, etc.) or create a custom sport.'}
+              </p>
+            </div>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button onClick={handleSeedDefaults} disabled={seeding} className="btn-primary text-xs py-2.5 px-4 flex items-center gap-2">
+                <SparklesIcon className="w-4 h-4" />
+                <span>{seeding ? 'Populating...' : 'Load Standard Sports'}</span>
+              </button>
+              <button onClick={handleOpenCreate} className="btn-secondary text-xs py-2.5 px-4">
+                Add Custom Sport
+              </button>
+            </div>
+          </div>
         ) : (
           <div className="table-container">
             <table className="table">
@@ -175,23 +273,32 @@ export default function ManageSports() {
                 </tr>
               </thead>
               <tbody>
-                {sports.map(s => (
+                {filteredSports.map(s => (
                   <tr key={s._id}>
-                    <td><span className="font-semibold text-white">{s.name}</span></td>
-                    <td><span className="text-xl">{s.icon || '🏆'}</span></td>
-                    <td>{s.scoringSchema?.fields?.length || 0} fields configured</td>
+                    <td>
+                      <span className="font-semibold text-white text-sm">{s.name}</span>
+                      {s.scoringSchema?.rules && (
+                        <p className="text-[11px] text-dark-100/40 line-clamp-1">{s.scoringSchema.rules}</p>
+                      )}
+                    </td>
+                    <td><span className="text-2xl">{s.icon || '🏆'}</span></td>
+                    <td>
+                      <span className="text-xs text-dark-100/70">
+                        {s.scoringSchema?.fields?.length || 0} fields configured
+                      </span>
+                    </td>
                     <td>
                       <span className={`badge ${s.isActive ? 'badge-success' : 'badge-danger'}`}>
                         {s.isActive ? 'Active' : 'Inactive'}
                       </span>
                     </td>
-                    <td className="text-right space-x-2">
-                      <button onClick={() => handleOpenEdit(s)} className="btn-ghost py-1 text-xs">Edit</button>
-                      <button onClick={() => handleToggle(s._id)} className="btn-ghost py-1 text-xs text-yellow-500">
+                    <td className="text-right space-x-1.5">
+                      <button onClick={() => handleOpenEdit(s)} className="btn-ghost py-1 px-2.5 text-xs text-primary-400">Edit</button>
+                      <button onClick={() => handleToggle(s._id)} className="btn-ghost py-1 px-2.5 text-xs text-yellow-400">
                         {s.isActive ? 'Disable' : 'Enable'}
                       </button>
-                      <button onClick={() => handleDelete(s._id, false)} className="btn-ghost py-1 text-xs text-orange-500">Deactivate</button>
-                      <button onClick={() => handleDelete(s._id, true)} className="btn-ghost py-1 text-xs text-red-500">Delete</button>
+                      <button onClick={() => handleDelete(s._id, false)} className="btn-ghost py-1 px-2.5 text-xs text-orange-400">Deactivate</button>
+                      <button onClick={() => handleDelete(s._id, true)} className="btn-ghost py-1 px-2.5 text-xs text-red-400">Delete</button>
                     </td>
                   </tr>
                 ))}
