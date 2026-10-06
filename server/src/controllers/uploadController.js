@@ -13,7 +13,8 @@ const uploadFile = async (req, res) => {
     return res.status(400).json({ success: false, message: 'No file uploaded. Please send a file under field "file"' });
   }
 
-  const folder = req.body.folder || 'uploads';
+  const tenantPrefix = req.user.role === 'admin' ? 'global' : (req.user.associationId?.toString() || req.user._id.toString());
+  const folder = req.body.folder ? `${tenantPrefix}/${req.body.folder}` : `${tenantPrefix}/uploads`;
 
   try {
     const result = await new Promise((resolve, reject) => {

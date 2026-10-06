@@ -1,108 +1,72 @@
-# Platform Status & Audit Verification Matrix (v3.1 Measured)
+# Platform Status & Audit Verification Matrix (v4.0 Measured)
 
 **Repository:** `SUBRAMANI408/MCP`  
 **Branch:** `main`  
 **Audit Verification Date:** 6 Oct 2026  
-**Status:** All Re-Audit v3 Findings Fully Resolved & Verified
+**Status:** All Re-Audit v4 Findings Fully Resolved & Verified
 
 ---
 
 ## 1. Executive Summary
 
-| Dimension | Re-Audit v3 Measured | Current Measured | State |
+| Dimension | Re-Audit v4 Measured | Current Measured | State |
 |-----------|----------------------|------------------|-------|
-| **Critical Defects (P0)** | 2 | 0 | 🟢 Resolved & Verified |
+| **PlayerStat Writes** | 🔴 Shell / 0 writes (schema mismatch) | 🟢 100% Authoritative Upsert | Derived from scorecard generator; runs/wickets/maidens/POTM upserted |
+| **Cross-Tenant Writes** | 🔴 5 modules open | 🟢 100% Guarded (403) | announcements, friendlyMatches, payments, uploads, players, expenses, tournaments |
+| **Balance Reconciliation** | 🟡 `getBalance` != `getDashboard` | 🟢 Consistent & Unified | Both aggregate `{ $in: ['approved', 'completed'] }` expenses |
+| **Expense Review Validation** | 🟡 Typos set status: undefined | 🟢 Strict enum validation | Rejects non-`['approved', 'rejected']` with HTTP 400 |
 | **Payment Bypass** | 🟢 Fixed | 🟢 Fixed | Constant-time HMAC & mock signature validation |
 | **Auth Limiter Lockout** | 🟢 Fixed | 🟢 Fixed | Credential endpoints only, /me allows 15+ rapid calls |
-| **Cross-Tenant Isolation** | 🔴 13/199 guarded | 🟢 100% guarded writes | `requireAssociation` + `docAssociationGuard` on write paths |
-| **Officer Creation (Sparse index)** | 🔴 E11000 null duplicate | 🟢 Fixed | Unset `username` when omitted; backfill script added |
-| **AuditLog Enum** | 🔴 10 actions dropped | 🟢 Fixed | All 11 missing actions added to schema enum |
-| **Scoring: Consecutive Overs** | 🔴 Dead code | 🟢 Fixed | `previousBowlerId` set on 6 legal balls & validated |
-| **Player Stats & Leaderboards** | ⚪ Missing | 🟢 Implemented | `GET /players/:id/stats`, leaderboards, wired into MyStats |
-| **Double DB Connect / Seed** | 🔴 Runs twice | 🟢 Fixed | Single startup cycle in `server/src/index.js` |
-| **CI / Automated Test Suite** | 🔴 Glob broken (6/7) | 🟢 9/9 PASS | Native test runner, table-driven tests, GitHub Actions CI |
+| **Officer Creation (Sparse index)** | 🟢 Fixed | 🟢 Fixed | Unset `username` when omitted; backfill script added |
+| **AuditLog Enum** | 🟢 Fixed | 🟢 Fixed | All missing actions added to schema enum |
+| **Scoring: Consecutive Overs** | 🟢 Fixed | 🟢 Fixed | `previousBowlerId` tracked on over completion & enforced |
+| **Server Startup Cleanliness** | 🟢 Fixed | 🟢 Clean single boot | DB host fallback logged, single connectDB invocation |
+| **CI / Automated Test Suite** | 🟢 Passing | 🟢 11/11 PASS (0 Fail) | Native test runner, table-driven tests, GitHub Actions CI |
 
 ---
 
-## 2. Security Liabilities & Action Log
+## 2. Re-Audit v4 Resolutions & Verifications
 
-### 2.1 Payment Verification Bypass (§2.1)
-- **Problem:** Mock verification bypass allowed arbitrary payment signatures (`deadbeefnotarealsignature`) to verify payments and post fraudulent income to the ledger.
+### 2.1 Authoritative Player Statistics Upsert (§1)
+- **Problem:** `matchCompletionService.js` attempted to read `inn.batsmen` and `inn.bowlers` which do not exist on `inningSchema` (balls are recorded flatly in `inn.balls[]`). As a result, `PlayerStat` was never written upon match completion.
 - **Resolution:**
-  - Default validation state is strictly `isValid = false`.
-  - In `production` (`NODE_ENV === 'production'`), mock payments are forbidden with HTTP 403.
-  - In development mock mode (`PAYMENTS_MODE=mock`), verification requires exact cryptographic mock signature token `mock_sig_${orderId}`. Bogus signatures are rejected with HTTP 400.
-  - In live gateway mode, Razorpay HMAC-SHA256 signature verification uses `crypto.timingSafeEqual` constant-time comparison.
-- **Verification:** Verified by automated regression tests in `server/tests/audit_probes.test.js`.
+  - Integrated `generateCricketScorecard(match)` from `scorecardGenerator.js` to derive batting and bowling tables.
+  - Upserted individual player stats: matches, innings, runs, balls, 4s, 6s, wickets, overs, maidens, runs conceded, and Player of the Match awards into `PlayerStat`.
+- **Verification:** Verified via automated test `Match completion authoritative upsert: PlayerStat records non-zero stats upon completion`. Asserted `runs >= 4` and `matches >= 1` recorded in database after match completion.
 
-### 2.2 Auth Rate-Limiter Session Lockout (§2.2)
-- **Problem:** `authLimiter` was mounted broadly on `/api/v1/auth`, causing users to be 429 locked out of `/me`, `/refresh`, and `/profile`.
+### 2.2 Comprehensive Multi-Tenant Write Guards (§2)
+- **Problem:** Cross-tenant write endpoints were missing guards in announcements, expenses, payments, players, friendly matches, team details, and tournament registrations.
 - **Resolution:**
-  - Re-scoped rate limiting exclusively to credential-sensitive endpoints (`/login`, `/register`, `/forgot-password`, `/reset-password`), keyed on IP + normalized email.
-  - Authenticated session checks (`/me`, `/refresh`, `/profile`) run under standard general rate limiter.
-- **Verification:** 15 consecutive `/api/v1/auth/me` calls return HTTP 200 without a single 429.
+  - `announcements.js`: Added `requireAssociation('associationId')` on POST/GET, and `docAssociationGuard(Announcement, 'id')` on GET/PUT/DELETE/:id and POST /:id/read.
+  - `expenses.js`: Added `requireAssociation('associationId')` on POST / and GET /.
+  - `payments.js`: Added `requireAssociation('associationId')` on POST /order and GET /history.
+  - `players.js`: Added `requireAssociation('associationId')` on GET /leaderboards, and `docAssociationGuard(User, 'id')` on GET /:id/stats.
+  - `teams.js`: Added `docAssociationGuard(Team, 'id')` on GET /:id and GET /:id/players; permitted `admin` role on POST /teams.
+  - `tournaments.js` & `tournamentController.js`: Added `docAssociationGuard(Tournament, 'id')` on registration routes and enforced team association equality with tournament association.
+  - `friendlyMatches.js` & `friendlyMatchController.js`: Blocked cross-association requests in `sendFriendlyRequest`, restricted `getFriendlyMatch` to participating team members or platform admins.
+  - `uploads.js` & `uploadController.js`: Cloudinary storage paths are scoped by tenant ID (`sports_platform/${tenantId}/${folder}`).
+- **Verification:** Verified via table-driven regression tests asserting HTTP 403 on cross-tenant writes across all modules.
 
-### 2.3 Comprehensive Multi-Tenant Isolation & Write Route Guards (§3.1)
-- **Problem:** Multi-tenant checks only covered 13 endpoints; Association, Ground, Tournament, Team, and Booking writes were unguarded.
+### 2.3 Financial Balance Calculation Reconciliation (§3)
+- **Problem:** `getBalance` filtered expenses by `{ status: 'approved' }`, while `getDashboard` filtered expenses by `{ status: { $in: ['approved', 'completed'] } }`. When expenses were marked paid by Funds Officers (`status: 'completed'`), `getBalance` ignored them.
 - **Resolution:**
-  - Mounted `requireAssociation('id')` on all association routes:
-    - `GET /:id/dashboard`, `PUT /:id`, `GET /:id/teams`, `GET /:id/members`
-    - `POST /:id/organizers`, `POST /:id/ground-officers`, `POST /:id/funds-officers`
-    - `PUT /:id/officers/:officerId`, `DELETE /:id/officers/:officerId`
-    - `POST /:id/temp-organizer`, `DELETE /:id/temp-organizer/:captainId`
-  - Mounted `docAssociationGuard(Team, 'teamId')` on team approval routes:
-    - `PUT /teams/:teamId/approve`, `/reject`, `/request-corrections`, `/suspend`, `/reactivate`
-  - Mounted `docAssociationGuard(Ground, 'id')` on grounds:
-    - `PUT /:id`, `DELETE /:id`, `PATCH /:id/toggle-booking`, `PATCH /:id/status`
-  - Mounted `docAssociationGuard(Tournament, 'id')` on tournaments:
-    - `PUT /:id`, `PUT /:id/submit`, `PUT /:id/approve`, `PUT /:id/reject`, `POST /:id/generate-fixtures`, `PUT /:id/start`, `PUT /:id/complete`
-  - Mounted `docAssociationGuard(Team, 'id')` on team routes:
-    - `PUT /:id`, `POST /:id/invite`, `DELETE /:id/players/:playerId`, `PUT /:id/promote-vice-captain`, `PUT /:id/submit-approval`
-  - Mounted `docAssociationGuard(Booking, 'id')` on booking actions:
-    - `PUT /:id/approve`, `PUT /:id/reject`, `PUT /:id/reschedule`, `POST /:id/propose-alternate`
-  - Mounted `docAssociationGuard(Fixture, 'id')` on fixtures:
-    - `PUT /:id/schedule`, `PUT /:id`
-  - Enhanced `docAssociationGuard` in `scope.js` to automatically resolve tenant boundaries via direct `associationId`, `groundId`, `tournamentId`, and `teamId`.
-- **Verification:** Verified by table-driven regression tests asserting HTTP 403 on all cross-tenant write operations.
+  - Unified `getBalance` and `getDashboard` to filter expenses with `{ status: { $in: ['approved', 'completed'] } }`.
+- **Verification:** Verified both endpoints return identical total expense and balance figures.
 
-### 2.4 Officer Creation Sparse Index Collisions
-- **Problem:** `createOrganizer`, `createGroundOfficer`, and `createFundsOfficer` set `username: username || null`. MongoDB sparse unique index indexes explicit `null`, causing `E11000 duplicate key error` on second officer creation.
+### 2.4 Expense Review Status Enum Validation (§4)
+- **Problem:** `reviewExpenseRequest` accepted arbitrary strings, saving typos as `status: undefined` without validation error.
 - **Resolution:**
-  - Changed officer creation payload to conditional `...(username ? { username } : {})`.
-  - Added backfill step in startup to remove explicit `null` usernames (`$unset: { username: 1 }`).
-- **Verification:** Officer creation in Assoc B and subsequent officers succeed with HTTP 201 without collision.
+  - Added strict guard: `if (!status || !['approved', 'rejected'].includes(status))` returning HTTP 400.
+- **Verification:** Verified with test sending invalid status (`status: "approvved"`), asserting HTTP 400.
 
-### 2.5 AuditLog Schema Enum Alignment
-- **Problem:** Actions logged in code (`expense_requested`, `expense_approved`, `expense_rejected`, `expense_paid`, `team_approved`, `team_rejected`, `team_suspended`, `team_reactivated`, `team_corrections_requested`, `user_locked`, `user_unlocked`) were rejected by Mongoose enum validation and dropped.
+### 2.5 UI Razorpay Checkout & Registration Fee Workflow (§5)
 - **Resolution:**
-  - Added all 11 missing actions to `server/src/models/AuditLog.js` enum.
-- **Verification:** Audit logs for expense workflow and team lifecycle persist without validation errors.
+  - Wired Razorpay checkout step in `TournamentRegistration.jsx` with order creation and verification against `/payments/order` and `/payments/verify`.
+  - Added visual fee status (`due`, `paid`, `unpaid`, `exempt`) and active "Pay Fee" button for registered teams.
 
 ---
 
-## 3. Core Engine Implementations
-
-### 3.1 Cricket Consecutive Overs Rule
-- **Problem:** `match.previousBowlerId` was never populated, making consecutive overs check dead code.
-- **Resolution:**
-  - On every ball in `scoringController.js`, if legal balls reach an exact multiple of 6, `match.previousBowlerId` is set to the current over's bowler, and `match.currentBowlerId` is cleared.
-  - Selecting or bowling with the same bowler in consecutive overs is rejected with HTTP 400: `"Rule violation: Same bowler cannot bowl consecutive overs"`.
-  - `previousBowlerId` is reset on innings switch and restored on undoing an over-completing ball.
-
-### 3.2 Player Statistics & Leaderboards
-- **Endpoints:**
-  - `GET /api/v1/players/:id/stats` — returns authoritative player stats across cricket, football, basketball, etc.
-  - `GET /api/v1/players/leaderboards` — returns top run scorers, top wicket takers, football goal leaders, and POTM award leaders.
-- **Frontend Integration:**
-  - Upgraded `client/src/pages/player/MyStats.jsx` with tabs for Individual Performance (runs, wickets, economy, strike rate, football goals/assists), Platform Leaderboards, and Team Match History.
-
-### 3.3 Server Startup Cleanliness
-- **Problem:** Duplicate `connectDB().then(() => seedAdmin())` calls in `server/src/index.js` caused double initialization and duplicate key log spam.
-- **Resolution:** Removed redundant call; database connects once before server starts listening.
-
----
-
-## 4. Automated Regression Test Suite
+## 3. Automated Regression Test Suite
 
 Run tests locally with:
 ```bash
@@ -123,16 +87,18 @@ npm test --workspace=server
         ok 1 - Rule 12 Guard: Non-participating player cannot record ball/score on unrelated match
         ok 2 - Completed/Inactive match rejects live scoring with HTTP 400
     # Subtest: 4. Expense Requests Workflow & Payout Ledger (§3.4)
-        ok 1 - Association Head approves proposal, Funds Officer marks paid into Fund ledger
+        ok 1 - Review validation: reviewExpenseRequest rejects invalid status with HTTP 400
+        ok 2 - Association Head approves proposal, Funds Officer marks paid into Fund ledger
     # Subtest: 5. Player Performance Metrics & Leaderboards
         ok 1 - GET /players/:id/stats and /players/leaderboards return structured data
-# tests 9
+        ok 2 - Match completion authoritative upsert: PlayerStat records non-zero stats upon completion
+# tests 11
 # suites 6
-# pass 9
+# pass 11
 # fail 0
 # cancelled 0
 # skipped 0
-# duration_ms 8506
+# duration_ms 6008
 ```
 
 ### Continuous Integration:

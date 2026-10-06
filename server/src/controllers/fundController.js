@@ -161,13 +161,14 @@ exports.getFund = async (req, res) => {
 
 exports.getBalance = async (req, res) => {
   const { associationId } = req.params;
+  const mongoId = require('mongoose').Types.ObjectId.createFromHexString(associationId);
   const [income, expenses] = await Promise.all([
     Fund.aggregate([
-      { $match: { associationId: require('mongoose').Types.ObjectId.createFromHexString(associationId), type: 'income', status: 'completed' } },
+      { $match: { associationId: mongoId, type: 'income', status: 'completed' } },
       { $group: { _id: null, total: { $sum: '$amount' } } }
     ]),
     Fund.aggregate([
-      { $match: { associationId: require('mongoose').Types.ObjectId.createFromHexString(associationId), type: 'expense', status: 'approved' } },
+      { $match: { associationId: mongoId, type: 'expense', status: { $in: ['approved', 'completed'] } } },
       { $group: { _id: null, total: { $sum: '$amount' } } }
     ]),
   ]);

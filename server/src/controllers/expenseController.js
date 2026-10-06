@@ -90,6 +90,9 @@ exports.getExpenseRequest = async (req, res) => {
 
 exports.reviewExpenseRequest = async (req, res) => {
   const { status, rejectionReason } = req.body; // 'approved' or 'rejected'
+  if (!status || !['approved', 'rejected'].includes(status)) {
+    return res.status(400).json({ success: false, message: "Invalid status. Must be 'approved' or 'rejected'" });
+  }
   const expense = await ExpenseRequest.findById(req.params.id);
   if (!expense) return res.status(404).json({ success: false, message: 'Expense request not found' });
 

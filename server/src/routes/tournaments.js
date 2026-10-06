@@ -43,8 +43,8 @@ router.put('/:id', authorize('tournament_organizer', 'admin'), docAssociationGua
 router.put('/:id/submit', authorize('tournament_organizer'), docAssociationGuard(Tournament, 'id'), submitForApproval);
 router.put('/:id/approve', authorize('association_head', 'admin'), docAssociationGuard(Tournament, 'id'), approveTournament);
 router.put('/:id/reject', authorize('association_head', 'admin'), docAssociationGuard(Tournament, 'id'), rejectTournament);
-router.post('/:id/register', authorize('captain'), registerTeam);
-router.delete('/:id/register', authorize('captain'), unregisterTeam);
+router.post('/:id/register', authorize('captain'), docAssociationGuard(Tournament, 'id'), registerTeam);
+router.delete('/:id/register', authorize('captain'), docAssociationGuard(Tournament, 'id'), unregisterTeam);
 router.get('/:id/registrations', authorize('tournament_organizer', 'admin', 'association_head'), docAssociationGuard(Tournament, 'id'), getTournamentRegistrations);
 router.put('/:id/registrations/:regId', authorize('tournament_organizer', 'admin'), docAssociationGuard(Tournament, 'id'), reviewTournamentRegistration);
 router.post('/:id/generate-fixtures', authorize('tournament_organizer', 'admin'), docAssociationGuard(Tournament, 'id'), generateFixtures);

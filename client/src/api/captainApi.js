@@ -27,4 +27,8 @@ export const captainApi = {
   getTournaments: (params) => api.get('/tournaments', { params }),
   registerTournament: (id) => api.post(`/tournaments/${id}/register`),
   unregisterTournament: (id) => api.delete(`/tournaments/${id}/register`),
+
+  // Payments
+  createPaymentOrder: (data) => api.post('/payments/order', data),
+  verifyPayment: (data) => api.post('/payments/verify', data),
 };

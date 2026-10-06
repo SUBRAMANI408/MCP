@@ -27,7 +27,7 @@ router.get('/invitations/my', getMyInvitations);
 router.put('/invitations/:inviteId/accept', acceptInvitation);
 router.put('/invitations/:inviteId/reject', rejectInvitation);
 
-router.post('/', authorize('captain'), requireAssociation('associationId'), [
+router.post('/', authorize('captain', 'admin'), requireAssociation('associationId'), [
   body('name').notEmpty().trim(),
   body('sport').notEmpty(),
   body('associationId').isMongoId(),
@@ -35,8 +35,8 @@ router.post('/', authorize('captain'), requireAssociation('associationId'), [
 
 router.get('/my-team', getMyTeam);
 router.get('/', requireAssociation('associationId'), getTeamsByAssociation);
-router.get('/:id', getTeam);
-router.get('/:id/players', getTeamPlayers);
+router.get('/:id', docAssociationGuard(Team, 'id'), getTeam);
+router.get('/:id/players', docAssociationGuard(Team, 'id'), getTeamPlayers);
 router.put('/:id', authorize('captain', 'association_head', 'admin'), docAssociationGuard(Team, 'id'), updateTeam);
 router.post('/:id/invite', authorize('captain', 'vice_captain'), docAssociationGuard(Team, 'id'), invitePlayer);
 router.delete('/:id/players/:playerId', authorize('captain'), docAssociationGuard(Team, 'id'), removePlayer);

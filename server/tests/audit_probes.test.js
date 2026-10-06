@@ -175,6 +175,9 @@ describe('Re-Audit Regression Suite — Digital Sports Association Platform', ()
         { method: 'POST', path: `/associations/${assocAId}/funds-officers`, body: { name: 'Attacker', email: `att_f.${uniqueSuffix}@test.com` } },
         { method: 'GET', path: `/associations/${assocAId}/dashboard`, body: null },
         { method: 'GET', path: `/associations/${assocAId}/members`, body: null },
+        { method: 'POST', path: `/expenses`, body: { associationId: assocAId, purpose: 'Hacked Expense', amount: 500 } },
+        { method: 'POST', path: `/payments/order`, body: { associationId: assocAId, purpose: 'tournament_fee', amount: 500 } },
+        { method: 'GET', path: `/announcements?associationId=${assocAId}`, body: null },
       ];
 
       for (const endpoint of writeEndpoints) {
@@ -220,12 +223,28 @@ describe('Re-Audit Regression Suite — Digital Sports Association Platform', ()
   });
 
   describe('4. Expense Requests Workflow & Payout Ledger (§3.4)', () => {
+    test('Review validation: reviewExpenseRequest rejects invalid status with HTTP 400', async () => {
+      const proposeRes = await apiRequest('/expenses', 'POST', {
+        purpose: 'Validation test expense',
+        category: 'office_expense',
+        amount: 800,
+        associationId: assocAId,
+      }, adminToken);
+      assert.equal(proposeRes.status, 201);
+      const expenseId = proposeRes.data.data._id;
+
+      const badReview = await apiRequest(`/expenses/${expenseId}/review`, 'PUT', {
+        status: 'invalid_status_value',
+      }, adminToken);
+      assert.equal(badReview.status, 400, 'Invalid review status must return 400');
+    });
+
     test('Association Head approves proposal, Funds Officer marks paid into Fund ledger', async () => {
       // 1. Submit an expense proposal
       const proposeRes = await apiRequest('/expenses', 'POST', {
         purpose: 'Equipment repair test',
         category: 'equipment_repair',
-        amount: 3500,
+        amount: 777,
         notes: 'Repairs for training equipment',
         associationId: assocAId,
       }, adminToken);
@@ -248,6 +267,23 @@ describe('Re-Audit Regression Suite — Digital Sports Association Platform', ()
       }, adminToken);
       assert.equal(payRes.status, 200, 'Expense payout should succeed');
       assert.equal(payRes.data.data.status, 'paid');
+
+      // 4. Verify getBalance and getDashboard agree on expense totals
+      const balanceRes = await apiRequest(`/funds/${assocAId}/balance`, 'GET', null, adminToken);
+      const dashboardRes = await apiRequest(`/funds/dashboard?associationId=${assocAId}`, 'GET', null, adminToken);
+
+      assert.equal(balanceRes.status, 200);
+      assert.equal(dashboardRes.status, 200);
+      assert.equal(
+        balanceRes.data.data.totalExpenses,
+        dashboardRes.data.data.totalExpenses,
+        'getBalance and getDashboard totalExpenses must agree'
+      );
+      assert.equal(
+        balanceRes.data.data.balance,
+        dashboardRes.data.data.balance,
+        'getBalance and getDashboard balance must agree'
+      );
     });
   });
 
@@ -265,6 +301,58 @@ describe('Re-Audit Regression Suite — Digital Sports Association Platform', ()
       assert.equal(lbRes.status, 200);
       assert.ok(Array.isArray(lbRes.data.data.topRunScorers), 'topRunScorers must be array');
       assert.ok(Array.isArray(lbRes.data.data.topWicketTakers), 'topWicketTakers must be array');
+    });
+
+    test('Match completion authoritative upsert: PlayerStat records non-zero stats upon completion', async () => {
+      const me = await apiRequest('/auth/me', 'GET', null, adminToken);
+      const myId = me.data.data._id;
+
+      const t1 = await apiRequest('/teams', 'POST', { name: `Alpha Warriors ${Date.now()}`, sport: 'cricket', associationId: assocAId }, adminToken);
+      const t2 = await apiRequest('/teams', 'POST', { name: `Beta Titans ${Date.now()}`, sport: 'cricket', associationId: assocAId }, adminToken);
+      const teamAId = t1.data?.data?._id;
+      const teamBId = t2.data?.data?._id;
+
+      const setupRes = await apiRequest('/scoring/setup', 'POST', {
+        sport: 'cricket',
+        type: 'friendly',
+        teamAId,
+        teamBId,
+        associationId: assocAId,
+        totalOvers: 2,
+        tossWinner: teamAId,
+        tossDecision: 'bat',
+      }, adminToken);
+
+      const matchId = setupRes.data?.data?._id;
+      assert.ok(matchId, 'Match setup must succeed and return matchId');
+
+      // Start match
+      await apiRequest(`/matches/${matchId}/start`, 'POST', null, adminToken);
+
+      // Record a ball with 4 runs by myId
+      const ballRes = await apiRequest(`/scoring/${matchId}/cricket/ball`, 'POST', {
+        inningIndex: 0,
+        batsmanId: myId,
+        bowlerId: myId,
+        runs: 4,
+        isBoundary: true,
+      }, adminToken);
+      assert.equal(ballRes.status, 200);
+
+      // Complete match
+      const completeRes = await apiRequest(`/matches/${matchId}/complete`, 'PUT', {
+        winnerId: teamAId,
+        resultSummary: 'Team A won by 4 runs',
+        playerOfMatchId: myId,
+      }, adminToken);
+      assert.equal(completeRes.status, 200);
+
+      // Verify PlayerStat now contains non-zero stats
+      const statsCheck = await apiRequest(`/players/${myId}/stats`, 'GET', null, adminToken);
+      assert.equal(statsCheck.status, 200);
+      const pStats = statsCheck.data.data.stats;
+      assert.ok(pStats.cricket.runs >= 4, `Player runs must be at least 4 (got ${pStats.cricket.runs})`);
+      assert.ok(pStats.matches >= 1, `Player matches must be at least 1 (got ${pStats.matches})`);
     });
   });
 

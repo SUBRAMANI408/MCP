@@ -8,6 +8,9 @@ export default function TournamentRegistration() {
   const [tournaments, setTournaments] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const [payingTournamentId, setPayingTournamentId] = useState(null);
+  const [feeStatuses, setFeeStatuses] = useState({});
+
   useEffect(() => {
     if (user?.associationId) {
       loadTournaments();
@@ -19,7 +22,8 @@ export default function TournamentRegistration() {
     // Fetch tournaments for current association
     captainApi.getTournaments({ associationId: user.associationId })
       .then(res => {
-        setTournaments(res.data.data || []);
+        const tours = res.data.data || [];
+        setTournaments(tours);
       })
       .catch(() => toast.error('Failed to load tournament registries'))
       .finally(() => setLoading(false));
@@ -33,6 +37,81 @@ export default function TournamentRegistration() {
           loadTournaments();
         })
         .catch(err => toast.error(err.response?.data?.message || 'Registration failed'));
+    }
+  };
+
+  const handlePayFee = async (tournament) => {
+    setPayingTournamentId(tournament._id);
+    try {
+      const orderRes = await captainApi.createPaymentOrder({
+        amount: tournament.registrationFee,
+        purpose: 'tournament_fee',
+        associationId: user.associationId,
+        relatedId: tournament._id,
+      });
+
+      const orderData = orderRes.data.data;
+      const orderId = orderData.orderId;
+
+      // Handle Mock Mode or Live Gateway
+      if (orderData.keyId === 'rzp_test_mock_mode') {
+        const verifyRes = await captainApi.verifyPayment({
+          orderId,
+          paymentId: `pay_mock_${Date.now()}`,
+          signature: `mock_sig_${orderId}`,
+        });
+        if (verifyRes.data.success) {
+          toast.success('Tournament fee paid successfully (Mock Mode)');
+          setFeeStatuses(prev => ({ ...prev, [tournament._id]: 'paid' }));
+          loadTournaments();
+        }
+      } else if (window.Razorpay) {
+        const options = {
+          key: orderData.keyId,
+          amount: Math.round(tournament.registrationFee * 100),
+          currency: 'INR',
+          name: tournament.name,
+          description: 'Tournament Registration Fee',
+          order_id: orderId,
+          handler: async (response) => {
+            try {
+              await captainApi.verifyPayment({
+                orderId: response.razorpay_order_id,
+                paymentId: response.razorpay_payment_id,
+                signature: response.razorpay_signature,
+              });
+              toast.success('Payment verified successfully!');
+              setFeeStatuses(prev => ({ ...prev, [tournament._id]: 'paid' }));
+              loadTournaments();
+            } catch {
+              toast.error('Payment verification failed');
+            }
+          },
+          prefill: {
+            name: user.name,
+            email: user.email,
+          },
+          theme: { color: '#0ea5e9' },
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.open();
+      } else {
+        // Fallback simulated payment for dev
+        const verifyRes = await captainApi.verifyPayment({
+          orderId,
+          paymentId: `pay_sim_${Date.now()}`,
+          signature: `mock_sig_${orderId}`,
+        });
+        if (verifyRes.data.success) {
+          toast.success('Registration fee processed');
+          setFeeStatuses(prev => ({ ...prev, [tournament._id]: 'paid' }));
+          loadTournaments();
+        }
+      }
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Payment initiation failed');
+    } finally {
+      setPayingTournamentId(null);
     }
   };
 
@@ -72,6 +151,8 @@ export default function TournamentRegistration() {
               const maxCap = t.maxTeams || 16;
               const currentRegCount = t.registeredTeams?.length || 0;
               const hasPassedDeadline = t.registrationDeadline ? new Date(t.registrationDeadline) < new Date() : false;
+              const feeAmount = t.registrationFee || 0;
+              const feeStatus = feeStatuses[t._id] || (feeAmount === 0 ? 'exempt' : (isRegistered ? 'unpaid' : 'due'));
 
               return (
                 <div key={t._id} className="card bg-dark-900 border border-dark-700/40 p-4 space-y-3 flex flex-col justify-between">
@@ -90,18 +171,33 @@ export default function TournamentRegistration() {
                       <div>Format: <span className="text-white font-medium capitalize">{t.format?.replace('_', ' ')}</span></div>
                       <div>Deadline: <span className="text-white font-medium">{t.registrationDeadline ? new Date(t.registrationDeadline).toLocaleDateString() : 'N/A'}</span></div>
                       <div>Registered Capacity: <span className="text-white font-medium">{currentRegCount} / {maxCap} teams</span></div>
+                      <div>Fee: <span className="text-white font-medium">Rs. {feeAmount}</span></div>
+                      <div>Fee Status: <span className={`font-semibold capitalize ${
+                        feeStatus === 'paid' ? 'text-green-400' : feeStatus === 'exempt' ? 'text-blue-400' : 'text-yellow-400'
+                      }`}>{feeStatus}</span></div>
                     </div>
                   </div>
 
-                  <div className="flex gap-2 pt-4">
+                  <div className="flex flex-col sm:flex-row gap-2 pt-4">
                     {isRegistered ? (
-                      <button
-                        onClick={() => handleUnregister(t._id)}
-                        disabled={t.status === 'ongoing' || t.status === 'completed'}
-                        className="btn-danger w-full justify-center text-xs py-2 disabled:opacity-50"
-                      >
-                        Withdraw Team
-                      </button>
+                      <>
+                        {feeAmount > 0 && feeStatus !== 'paid' && (
+                          <button
+                            onClick={() => handlePayFee(t)}
+                            disabled={payingTournamentId === t._id}
+                            className="btn-primary w-full justify-center text-xs py-2 bg-emerald-600 hover:bg-emerald-500"
+                          >
+                            {payingTournamentId === t._id ? 'Processing...' : `Pay Fee (Rs. ${feeAmount})`}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleUnregister(t._id)}
+                          disabled={t.status === 'ongoing' || t.status === 'completed'}
+                          className="btn-danger w-full justify-center text-xs py-2 disabled:opacity-50"
+                        >
+                          Withdraw Team
+                        </button>
+                      </>
                     ) : (
                       <button
                         onClick={() => handleRegister(t._id)}

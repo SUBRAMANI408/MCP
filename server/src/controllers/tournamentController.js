@@ -147,6 +147,16 @@ exports.registerTeam = async (req, res) => {
   const TournamentRegistration = require('../models/TournamentRegistration');
   const Team = require('../models/Team');
   const team = await Team.findById(teamId).populate('players', 'name role email');
+  if (!team) return res.status(404).json({ success: false, message: 'Team not found' });
+
+  if (req.user.role !== 'admin') {
+    const userAssocId = req.user.associationId?._id ? req.user.associationId._id.toString() : req.user.associationId?.toString();
+    const teamAssocId = team.associationId?._id ? team.associationId._id.toString() : team.associationId?.toString();
+    const tourAssocId = tournament.associationId?._id ? tournament.associationId._id.toString() : tournament.associationId?.toString();
+    if (tourAssocId && (userAssocId !== tourAssocId || teamAssocId !== tourAssocId)) {
+      return res.status(403).json({ success: false, message: 'Cross-association tournament registration is forbidden' });
+    }
+  }
 
   const rosterSnapshot = (team?.players || []).map(p => ({
     userId: p._id,

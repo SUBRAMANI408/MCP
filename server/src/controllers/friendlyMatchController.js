@@ -9,6 +9,15 @@ exports.sendFriendlyRequest = async (req, res) => {
   if (!requestingTeam) return res.status(400).json({ success: false, message: 'You are not in a team' });
   const respondingTeam = await Team.findById(respondingTeamId);
   if (!respondingTeam) return res.status(404).json({ success: false, message: 'Responding team not found' });
+
+  if (req.user.role !== 'admin') {
+    const reqAssoc = requestingTeam.associationId?.toString();
+    const respAssoc = respondingTeam.associationId?.toString();
+    if (reqAssoc && respAssoc && reqAssoc !== respAssoc) {
+      return res.status(403).json({ success: false, message: 'Cross-association friendly match requests are not permitted' });
+    }
+  }
+
   const match = await FriendlyMatch.create({
     requestingTeamId: req.user.teamId,
     respondingTeamId, sport, groundId, date, time, message, status: 'pending',
@@ -43,10 +52,20 @@ exports.getFriendlyMatches = async (req, res) => {
 
 exports.getFriendlyMatch = async (req, res) => {
   const match = await FriendlyMatch.findById(req.params.id)
-    .populate('requestingTeamId', 'name sport captainId')
-    .populate('respondingTeamId', 'name sport captainId')
+    .populate('requestingTeamId', 'name sport captainId associationId')
+    .populate('respondingTeamId', 'name sport captainId associationId')
     .populate('groundId', 'name location');
   if (!match) return res.status(404).json({ success: false, message: 'Match not found' });
+
+  if (req.user.role !== 'admin') {
+    const userTeamId = req.user.teamId?.toString();
+    const reqTeamId = match.requestingTeamId?._id?.toString() || match.requestingTeamId?.toString();
+    const respTeamId = match.respondingTeamId?._id?.toString() || match.respondingTeamId?.toString();
+    if (userTeamId !== reqTeamId && userTeamId !== respTeamId) {
+      return res.status(403).json({ success: false, message: 'Access denied: You do not belong to either team in this friendly match' });
+    }
+  }
+
   successResponse(res, match);
 };
 

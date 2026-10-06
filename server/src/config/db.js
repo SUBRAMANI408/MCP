@@ -17,7 +17,7 @@ const connectDB = async () => {
       const conn = await mongoose.connect(uri, {
         serverSelectionTimeoutMS: process.env.NODE_ENV === 'production' ? 10000 : 2000
       });
-      console.log(`MongoDB Connected: ${conn.connection.host}`);
+      console.log(`MongoDB Connected: ${conn.connection.host || conn.connection.name || 'localhost'}`);
     } catch (primaryError) {
       // In production, fail loudly — no fallback
       if (process.env.NODE_ENV === 'production') {
@@ -43,7 +43,7 @@ const connectDB = async () => {
       }
 
       const conn = await mongoose.connect(uri);
-      console.log(`[DEV] In-Memory MongoDB Connected: ${conn.connection.host}`);
+      console.log(`[DEV] In-Memory MongoDB Connected: ${conn.connection.host || conn.connection.name || 'localhost'}`);
     }
   } catch (error) {
     console.error(`[FATAL] MongoDB connection error: ${error.message}`);
