@@ -855,11 +855,18 @@ async function seedLargeDataset() {
     console.log('8. Player:                 player@sports.com (Player of RCB XI)');
     console.log('======================================================\n');
 
-    process.exit(0);
+    return { totalTeams, totalUsers };
   } catch (err) {
     console.error('[ERROR] Failed to seed large dataset:', err);
-    process.exit(1);
+    throw err;
   }
 }
 
-seedLargeDataset();
+if (require.main === module) {
+  seedLargeDataset()
+    .then(() => process.exit(0))
+    .catch(() => process.exit(1));
+}
+
+module.exports = seedLargeDataset;
+

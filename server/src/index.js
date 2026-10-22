@@ -12,6 +12,7 @@ const { Server } = require('socket.io');
 
 const connectDB = require('./config/db');
 const seedAdmin = require('./utils/seedAdmin');
+const seedLargeDataset = require('./utils/seedLargeDataset');
 const errorHandler = require('./middleware/errorHandler');
 const { initSocketHandlers } = require('./socket/handlers');
 
@@ -130,6 +131,13 @@ const PORT = process.env.PORT || 5000;
 // Connect Database before accepting HTTP connections
 connectDB().then(async () => {
   await seedAdmin();
+  if (process.env.NODE_ENV !== 'production') {
+    try {
+      await seedLargeDataset();
+    } catch (seedErr) {
+      console.warn('[WARN] seedLargeDataset skipped or failed:', seedErr.message);
+    }
+  }
   server.listen(PORT, () => {
     console.log(`Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
   });

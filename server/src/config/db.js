@@ -36,7 +36,13 @@ const connectDB = async () => {
       console.log('[INFO] Local MongoDB not detected. Provisioning in-memory database for development...');
 
       const { MongoMemoryServer } = require('mongodb-memory-server');
-      const mongoServer = await MongoMemoryServer.create({ instance: { port: 27017, dbName: 'sports' } });
+      let mongoServer;
+      try {
+        mongoServer = await MongoMemoryServer.create({ instance: { port: 27017, dbName: 'sports' } });
+      } catch (portErr) {
+        console.warn(`[WARN] Fixed port 27017 busy (${portErr.message}), allocating dynamic port for in-memory MongoDB...`);
+        mongoServer = await MongoMemoryServer.create({ instance: { dbName: 'sports' } });
+      }
       uri = mongoServer.getUri();
       if (!uri.includes('/sports')) {
         uri = uri.replace(/\/?$/, '/sports');
